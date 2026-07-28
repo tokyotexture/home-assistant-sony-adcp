@@ -28,7 +28,7 @@
   </a>
   <a href="LICENSE">
     <img
-      src="https://img.shields.io/github/license/tokyotexture/home-assistant-sony-adcp?style=flat-square"
+      src="https://img.shields.io/github/license/tokyotexture/home-assistant-sony-adcp?style=flat-square&cacheSeconds=300&v=2"
       alt="Apache-2.0 license"
     >
   </a>
