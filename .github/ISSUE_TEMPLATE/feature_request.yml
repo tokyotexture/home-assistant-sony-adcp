@@ -1,0 +1,30 @@
+name: Feature request
+description: Suggest an improvement or additional projector capability
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: input
+    id: projector
+    attributes:
+      label: Projector model
+      placeholder: Sony VPL-VW535
+  - type: textarea
+    id: request
+    attributes:
+      label: Requested improvement
+      description: Explain the use case and desired Home Assistant behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: protocol
+    attributes:
+      label: Protocol documentation
+      description: Link or attach the Sony command documentation when available.
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues for this request.
+          required: true
