@@ -1,0 +1,12 @@
+{
+  "domain": "sony_adcp",
+  "name": "Sony ADCP Projector",
+  "codeowners": ["@tokyotexture"],
+  "config_flow": true,
+  "documentation": "https://github.com/tokyotexture/home-assistant-sony-adcp",
+  "integration_type": "device",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/tokyotexture/home-assistant-sony-adcp/issues",
+  "requirements": [],
+  "version": "2.2.2"
+}
