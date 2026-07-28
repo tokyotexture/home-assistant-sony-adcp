@@ -1,0 +1,74 @@
+name: Bug report
+description: Report a problem with the Sony ADCP Projector integration
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Remove passwords and other secrets
+        before attaching logs or diagnostics.
+  - type: input
+    id: home_assistant_version
+    attributes:
+      label: Home Assistant version
+      placeholder: 2026.7.2
+    validations:
+      required: true
+  - type: input
+    id: integration_version
+    attributes:
+      label: Integration version
+      placeholder: 2.2.2
+    validations:
+      required: true
+  - type: input
+    id: projector
+    attributes:
+      label: Projector model and firmware
+      placeholder: Sony VPL-VW535
+    validations:
+      required: true
+  - type: dropdown
+    id: authentication
+    attributes:
+      label: ADCP authentication
+      options:
+        - Enabled
+        - Disabled
+        - Unknown
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the expected and actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste redacted logs or drag a redacted diagnostics file here.
+      render: text
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I removed passwords and other secrets.
+          required: true
+        - label: I searched existing issues for the same problem.
+          required: true
