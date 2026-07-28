@@ -1,0 +1,136 @@
+{
+  "title": "Sony ADCP Projector",
+  "config": {
+    "flow_title": "{name}",
+    "progress": {
+      "discovering": "Listening for Sony projector announcements for up to {seconds} seconds"
+    },
+    "step": {
+      "user": {
+        "title": "Select a Sony projector",
+        "description": "Projectors broadcasting Sony SDAP announcements appear automatically.",
+        "data": {
+          "discovered_host": "Projector"
+        }
+      },
+      "select": {
+        "title": "Select a Sony projector",
+        "description": "Select a discovered projector or enter its address manually.",
+        "data": {
+          "discovered_host": "Projector"
+        }
+      },
+      "manual": {
+        "title": "Enter projector address",
+        "description": "ADCP must be enabled in the projector's network settings.",
+        "data": {
+          "host": "Host",
+          "port": "ADCP port",
+          "name": "Device name"
+        }
+      },
+      "auth": {
+        "title": "Projector authentication",
+        "description": "The projector at {host} requires its web administrator password.",
+        "data": {
+          "password": "Administrator password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Update projector password",
+        "data": {
+          "password": "Administrator password"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconnect to the projector",
+        "data": {
+          "host": "Host",
+          "port": "ADCP port",
+          "name": "Device name"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not connect to the projector",
+      "invalid_auth": "The projector rejected the password",
+      "unknown": "Unexpected projector response"
+    },
+    "abort": {
+      "already_configured": "This projector is already configured",
+      "reauth_successful": "Projector password updated",
+      "reconfigure_successful": "Projector configuration updated",
+      "unique_id_mismatch": "The address belongs to a different projector"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Projector status refresh",
+        "description": "Choose how often Home Assistant checks the active input and signal while the projector is on. Power always uses Sony's push announcements and is never polled.",
+        "data": {
+          "operational_refresh_interval": "Input and signal refresh"
+        },
+        "data_description": {
+          "operational_refresh_interval": "Changes apply immediately. No checks are made while the projector is off."
+        }
+      }
+    }
+  },
+  "selector": {
+    "operational_refresh_interval": {
+      "options": {
+        "0": "Disabled",
+        "5": "Every 5 seconds",
+        "10": "Every 10 seconds (recommended)",
+        "30": "Every 30 seconds"
+      }
+    }
+  },
+  "entity": {
+    "number": {
+      "brightness": {
+        "name": "Brightness"
+      },
+      "contrast": {
+        "name": "Contrast"
+      },
+      "sharpness": {
+        "name": "Sharpness"
+      },
+      "light_output_val": {
+        "name": "Light output"
+      },
+      "real_cre_reso": {
+        "name": "Reality Creation resolution"
+      },
+      "real_cre_noise": {
+        "name": "Reality Creation noise filtering"
+      }
+    },
+    "select": {
+      "picture_mode": {
+        "name": "Picture mode"
+      }
+    },
+    "sensor": {
+      "power_status": {
+        "name": "Power status"
+      },
+      "signal": {
+        "name": "Signal"
+      },
+      "errors": {
+        "name": "Errors"
+      },
+      "warnings": {
+        "name": "Warnings"
+      }
+    },
+    "switch": {
+      "blank": {
+        "name": "Video mute"
+      }
+    }
+  }
+}
