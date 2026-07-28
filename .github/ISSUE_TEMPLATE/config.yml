@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Home Assistant community support
+    url: https://www.home-assistant.io/help/
+    about: Ask general Home Assistant questions through the community support channels.
