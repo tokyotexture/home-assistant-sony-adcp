@@ -2,6 +2,13 @@
 
 All notable changes to Sony ADCP Projector are documented here.
 
+## 2.2.3
+
+- Prevented long-running operational polling from blocking Home Assistant
+  bootstrap.
+- Added 60-second power-state reconciliation so missed or stale SDAP
+  announcements self-correct.
+
 ## 2.2.2
 
 - Added bundled Home Assistant integration branding.
