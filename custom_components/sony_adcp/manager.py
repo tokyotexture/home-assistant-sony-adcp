@@ -118,12 +118,7 @@ class ProjectorManager:
         """Refresh full state periodically, regardless of believed power."""
         while True:
             await asyncio.sleep(POWER_WATCHDOG_INTERVAL)
-            try:
-                await self.async_refresh()
-            except Exception:  # noqa: BLE001 - watchdog must never die
-                _LOGGER.debug(
-                    "Sony ADCP power watchdog refresh failed", exc_info=True
-                )
+            await self.async_refresh()
 
     async def async_probe_capabilities(self) -> None:
         """Probe only documented commands; unsupported commands are omitted."""
@@ -335,7 +330,10 @@ class ProjectorManager:
             self._operational_refresh_task = None
             return
         if task is None or task.done():
-            self._operational_refresh_task = self.hass.async_create_task(
+            # Background task: this loop never finishes, so scheduling it with
+            # async_create_task makes HA's bootstrap phase wait on it and log
+            # "Setup timed out for bootstrap" on every restart.
+            self._operational_refresh_task = self.hass.async_create_background_task(
                 self._async_operational_refresh_loop(),
                 "Refresh Sony projector input and signal",
             )
