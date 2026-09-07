@@ -8,5 +8,5 @@
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/tokyotexture/home-assistant-sony-adcp/issues",
   "requirements": [],
-  "version": "2.2.2"
+  "version": "2.2.3"
 }
