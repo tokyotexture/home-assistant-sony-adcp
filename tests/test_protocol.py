@@ -271,7 +271,7 @@ class OperationalRefreshTest(unittest.IsolatedAsyncioTestCase):
     async def test_disabled_interval_stops_running_task(self) -> None:
         class FakeHass:
             @staticmethod
-            def async_create_task(coroutine, name):
+            def async_create_background_task(coroutine, name):
                 return asyncio.create_task(coroutine, name=name)
 
         manager = ProjectorManager(

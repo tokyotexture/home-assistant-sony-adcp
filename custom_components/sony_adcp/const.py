@@ -13,6 +13,8 @@ DEFAULT_PORT: Final = 53595
 DEFAULT_SOURCES: Final = ("hdmi1", "hdmi2")
 DEFAULT_OPERATIONAL_REFRESH_INTERVAL: Final = 10
 OPERATIONAL_REFRESH_INTERVALS: Final = (0, 5, 10, 30)
+# Periodically verify power state in case SDAP announcements are missed or stale.
+POWER_WATCHDOG_INTERVAL: Final = 60
 ADVERTISEMENT_PORT: Final = 53862
 COMMAND_TIMEOUT: Final = 5.0
 DISCOVERY_TIMEOUT: Final = 35.0

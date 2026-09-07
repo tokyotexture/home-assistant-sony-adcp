@@ -13,6 +13,7 @@ from homeassistant.core import HomeAssistant, callback
 from .const import (
     DEFAULT_SOURCES,
     NUMBER_COMMANDS,
+    POWER_WATCHDOG_INTERVAL,
     SDAP_POWER_STATES,
     SELECT_COMMANDS,
 )
@@ -63,6 +64,7 @@ class ProjectorManager:
         self._refresh_task: asyncio.Task[None] | None = None
         self._operational_refresh_interval = operational_refresh_interval
         self._operational_refresh_task: asyncio.Task[None] | None = None
+        self._power_watchdog_task: asyncio.Task[None] | None = None
         self._availability_timer: asyncio.TimerHandle | None = None
         self._capabilities_probed = False
 
@@ -93,6 +95,30 @@ class ProjectorManager:
         if self.state.power_status not in {None, "standby", "saving_standby"}:
             await self.async_probe_capabilities()
         self._update_operational_refresh_task()
+        self._start_power_watchdog()
+
+    @callback
+    def _start_power_watchdog(self) -> None:
+        """Poll full state on a slow cadence so power can never stay stale.
+
+        Power is otherwise only ever updated by SDAP push announcements, so a
+        projector that stops announcing (or announces a stale value) leaves
+        Home Assistant permanently wrong with no way to recover short of
+        reloading the config entry.
+        """
+        task = self._power_watchdog_task
+        if task is not None and not task.done():
+            return
+        self._power_watchdog_task = self.hass.async_create_background_task(
+            self._async_power_watchdog_loop(),
+            "Sony projector power watchdog",
+        )
+
+    async def _async_power_watchdog_loop(self) -> None:
+        """Refresh full state periodically, regardless of believed power."""
+        while True:
+            await asyncio.sleep(POWER_WATCHDOG_INTERVAL)
+            await self.async_refresh()
 
     async def async_probe_capabilities(self) -> None:
         """Probe only documented commands; unsupported commands are omitted."""
@@ -273,6 +299,11 @@ class ProjectorManager:
             and not self._operational_refresh_task.done()
         ):
             self._operational_refresh_task.cancel()
+        if (
+            self._power_watchdog_task is not None
+            and not self._power_watchdog_task.done()
+        ):
+            self._power_watchdog_task.cancel()
         if self._availability_timer is not None:
             self._availability_timer.cancel()
         await self.client.async_close()
