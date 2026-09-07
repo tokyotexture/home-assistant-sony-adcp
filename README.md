@@ -44,9 +44,10 @@ Sony ADCP Projector represents a projector as a native Home Assistant
 `media_player`: power it on or off, select an input, see its signal format, and
 build automations around real device state.
 
-Power state is delivered by Sony's local SDAP announcements. It is not polled
-on a timer. Only the active input and signal are refreshed while the projector
-is on, at a configurable interval.
+Power state is delivered immediately by Sony's local SDAP announcements and
+independently reconciled through ADCP every 60 seconds in case announcements
+are missed or stale. The active input and signal are refreshed while the
+projector is on, at a configurable interval.
 
 ## Features
 
@@ -55,7 +56,8 @@ is on, at a configurable interval.
 - Model and serial-number identification
 - Automatic detection of password authentication
 - Fully asynchronous ADCP client with reconnect handling
-- Push-driven power, startup, cooling, and standby state
+- Push-driven power, startup, cooling, and standby state with periodic ADCP
+  reconciliation
 - Input selection and current-source reporting
 - Signal-format sensor suitable for automations
 - Video mute, picture mode, and supported numeric image controls
@@ -156,7 +158,7 @@ Entity availability depends on the commands supported by the projector.
 
 | State | Update method |
 | --- | --- |
-| Power | Immediate local SDAP announcements; never polled on a schedule |
+| Power | Immediate local SDAP announcements plus 60-second ADCP reconciliation |
 | Input and signal | ADCP refresh while the projector is on |
 | Commands sent by Home Assistant | Refreshed immediately after completion |
 | Picture mode, video mute, and image controls | Setup and Home Assistant commands only |
