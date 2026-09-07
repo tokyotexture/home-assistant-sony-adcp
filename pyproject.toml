@@ -1,6 +1,6 @@
 [project]
 name = "ha-sony-adcp"
-version = "2.2.2"
+version = "2.2.3"
 description = "Async Sony ADCP projector integration for Home Assistant"
 requires-python = ">=3.13"
 license = { text = "Apache-2.0" }
