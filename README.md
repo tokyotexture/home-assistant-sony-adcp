@@ -79,6 +79,13 @@ The integration was developed and tested with a Sony VPL-VW535. Sony models
 vary, so optional entities are created only when the projector reports support
 for the corresponding command.
 
+### Tested models
+
+| Model | Firmware | Notes |
+| --- | --- | --- |
+| VPL-VW535 | | Development model |
+| VPL-XW5000ES (reports as VPL-XW5000) | 1.101 | All entities work |
+
 ## Installation
 
 ### HACS
