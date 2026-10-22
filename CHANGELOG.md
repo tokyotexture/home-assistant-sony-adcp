@@ -2,6 +2,17 @@
 
 All notable changes to Sony ADCP Projector are documented here.
 
+## 2.3.0b2 (prerelease)
+
+- Keep startup monitoring bounded to 60 seconds, but extend shutdown monitoring
+  to 5 minutes. Initial VPL-VW535 testing showed approximately 2 minutes
+  14 seconds between the first reported cooling state and standby.
+- Both limits include network waits, and monitoring still stops immediately
+  when the requested endpoint is confirmed. The one-second interval, normal
+  SDAP/watchdog behavior, and no-command-resend policy are unchanged.
+- Added regression coverage for both default deadlines and cooldown continuing
+  beyond the startup deadline; the suite now contains 43 tests.
+
 ## 2.3.0b1 (prerelease)
 
 - Added bounded, asynchronous power-transition monitoring after a successful
