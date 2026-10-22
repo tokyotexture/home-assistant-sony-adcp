@@ -2,6 +2,26 @@
 
 All notable changes to Sony ADCP Projector are documented here.
 
+## 2.4.0b4 (prerelease)
+
+- Add the admin-only, response-returning `sony_adcp.query_command` action for
+  current values (for example `aspect`), allowed values/ranges and command info.
+  Keep queries separate from write-only Execute operations; accept command names
+  only and generate every read-only protocol suffix internally.
+- Return the normalized projector reply plus structured JSON objects/arrays,
+  preserving scalar strings and exact-case choices. Current-value reads require
+  no metadata or custom sensor. Every call is fresh, with no entity-cache updates,
+  new entities, polling tasks or refresh-option changes.
+- Share authenticated async communication and locks. Bound the entire action to
+  30 seconds, pause access during fast power monitoring, discard replies after
+  power changes and cancel pending queries on unload. Try alternate Sony metadata
+  syntax only on command/option rejection, not inactive/authentication/IO failures.
+- Document official Sony aspect queries, script response variables and discovering
+  model-specific color-temperature choices. Add query encoding/lifecycle and real
+  HA service registration, permissions, response and deadline regressions.
+- Retain beta 2's ownership fix and beta 3's structured writes/readback. Stable
+  v2.3.0 remains unchanged; new query behavior needs real-projector beta testing.
+
 ## 2.4.0b3 (prerelease)
 
 - Add the admin-only `sony_adcp.send_command` action for existing projector

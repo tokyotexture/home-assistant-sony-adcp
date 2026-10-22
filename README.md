@@ -60,6 +60,9 @@ projector is fully on, at a configurable interval.
 > Beta 3 also adds an admin-only [Send ADCP command action](docs/custom-commands.md),
 > with structured set/relative/reset/execute operations and remote keys. Its guide
 > includes actual Sony examples, model caveats, acknowledgement and retry behavior.
+> Beta 4 adds [Query ADCP command](docs/custom-commands.md#query-current-values):
+> read current values such as `aspect`, allowed values/ranges, or command information
+> directly in Developer Tools and scripts, without creating a sensor.
 
 - Native projector-class `media_player`
 - Automatic discovery through Sony SDAP advertisements
@@ -299,11 +302,11 @@ exact read triggers, see [How values update](docs/state-updates.md).
 
 ### Testing 2.4 and stable 2.3
 
-This branch is **v2.4.0b3**, an opt-in prerelease for custom sensors and command actions.
-In HACS, enable prerelease versions, Redownload **v2.4.0b3**, then restart Home
+This branch is **v2.4.0b4**, an opt-in prerelease for custom sensors and command actions.
+In HACS, enable prerelease versions, Redownload **v2.4.0b4**, then restart Home
 Assistant. See the [beta guide](docs/custom-sensors.md) for setup and rollback.
-The [command-action guide](docs/custom-commands.md) explains the new action, real
-Sony command examples, validation, readback and non-replayed writes. Power control
+The [command-action guide](docs/custom-commands.md) explains both actions, real
+Sony query/write examples, response variables, validation, readback and non-replayed writes. Power control
 ownership and automatic migration from beta 1 remain fixed as in beta 2.
 Before downgrading, remove custom sensors through Configure while still on the beta.
 
