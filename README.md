@@ -114,7 +114,7 @@ display with network ADCP support. Not every Sony display supports these protoco
 
 | Model | Firmware | Report |
 | --- | --- | --- |
-| VPL-VW535 | Not recorded | Development model; maintainer confirmed 2.4 query/write actions and custom sensors working |
+| VPL-VW535 | 5.003 | Development model; maintainer confirmed 2.4 query/write actions and custom sensors working |
 | VPL-XW5000ES (reports as VPL-XW5000) | 1.101 | Previously reported working; optional capabilities vary |
 
 Commands, accepted values and available controls vary by model, input and power
