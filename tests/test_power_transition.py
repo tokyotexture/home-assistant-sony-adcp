@@ -169,7 +169,7 @@ class PowerTransitionTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_timeout_includes_a_blocked_read(self):
         self.client.block = True
-        with patch.object(_manager, "POWER_TRANSITION_TIMEOUT", 0.02):
+        with patch.object(_manager, "POWER_ON_TRANSITION_TIMEOUT", 0.02):
             await self.manager.async_turn_on()
             await self.finish()
         self.assertTrue(self.client.cancelled_read)
@@ -178,12 +178,39 @@ class PowerTransitionTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_ignored_command_times_out_without_resending_power(self):
         self.client.last_power = "on"
-        with patch.object(_manager, "POWER_TRANSITION_TIMEOUT", 0.02):
+        with patch.object(_manager, "POWER_OFF_TRANSITION_TIMEOUT", 0.02):
             await self.manager.async_turn_off()
             await self.finish()
         self.assertEqual(self.manager.state.power_status, "on")
         self.assertEqual(self.client.power_commands, [False])
         self.assertGreater(len(self.client.queries), 1)
+
+    async def test_startup_uses_a_sixty_second_deadline(self):
+        self.client.responses.append("on")
+        with patch.object(_manager.asyncio, "timeout", wraps=asyncio.timeout) as deadline:
+            await self.manager.async_turn_on()
+            await self.finish()
+        deadline.assert_called_once_with(60)
+
+    async def test_shutdown_uses_a_five_minute_deadline(self):
+        self.client.responses.append("standby")
+        with patch.object(_manager.asyncio, "timeout", wraps=asyncio.timeout) as deadline:
+            await self.manager.async_turn_off()
+            await self.finish()
+        deadline.assert_called_once_with(300)
+
+    async def test_cooling_can_outlast_the_startup_deadline(self):
+        self.client.responses.extend(["on", "cooling1", "cooling2", "standby"])
+        with (
+            patch.object(_manager, "POWER_ON_TRANSITION_TIMEOUT", 0.001),
+            patch.object(_manager, "POWER_OFF_TRANSITION_TIMEOUT", 0.4),
+            patch.object(_manager, "POWER_TRANSITION_INTERVAL", 0.01),
+        ):
+            await self.manager.async_turn_off()
+            await self.finish()
+        self.assertEqual(self.manager.state.power_status, "standby")
+        self.assertIn("cooling2", self.history)
+        self.assertEqual(self.client.power_commands, [False])
 
     async def test_authentication_failure_stops_and_requests_reauth(self):
         self.client.responses.append(_protocol.AdcpAuthenticationError("bad password"))
