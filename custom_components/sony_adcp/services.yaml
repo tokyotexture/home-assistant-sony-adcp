@@ -39,5 +39,3 @@ send_command:
       example: "6500K"
       selector:
         text:
-  response:
-    optional: true
