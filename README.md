@@ -49,7 +49,8 @@ reconciled through ADCP every 60 seconds in case announcements are missed or
 stale. After a Home Assistant power command, a short-lived ADCP monitor checks
 power approximately every second until the requested state is reached, for at
 most 60 seconds during startup or 5 minutes during shutdown. The active input
-and signal are refreshed while the projector is on, at a configurable interval.
+and signal, along with optional picture settings, are refreshed while the
+projector is fully on, at a configurable interval.
 
 ## Features
 
@@ -169,14 +170,34 @@ Entity availability depends on the commands supported by the projector.
 | --- | --- |
 | Power | SDAP announcements plus 60-second ADCP reconciliation |
 | Home Assistant power commands | Immediate ADCP check, then approximately every second; up to 60 seconds for startup or 5 minutes for shutdown |
-| Input and signal | ADCP refresh while the projector is on |
+| Input and signal | ADCP refresh while the projector is fully on |
 | Other commands sent by Home Assistant | Refreshed immediately after completion |
-| Picture mode, video mute, and image controls | Setup and Home Assistant commands only |
+| Picture mode, video mute, and image controls | Same periodic interval when Include picture settings is on; also setup and Home Assistant commands |
 
-Input and signal default to a 10-second refresh interval while the projector is
-on. To change it, open the integration and select **Configure**. Available
-choices are Disabled, 5, 10, or 30 seconds. No operational refresh runs while
-the projector is off.
+Operational state defaults to a 10-second refresh interval while the projector
+is fully on. To change it, open the integration and select **Configure**.
+Available choices are Disabled, 5, 10, or 30 seconds. No operational refresh
+runs during startup, cooling, standby, or fast power-transition monitoring.
+
+**Include picture settings** is on by default (including existing installations)
+and applies immediately without reloading. It refreshes picture mode, brightness,
+contrast, sharpness, light output, Reality Creation resolution/noise filtering,
+and video mute, but only for supported controls whose entities are enabled.
+Changes made with the projector's remote or menus update the existing entities;
+no duplicate sensors are created. Turning the option off restores input/signal-only
+periodic refresh. Selecting Disabled stops periodic picture checks too, without
+disabling SDAP or power monitoring. Direct Home Assistant controls still read
+their own value after a command.
+
+Input and signal are published first, followed by picture mode and the other
+controls. Picture reads share the existing serialized connection and have a
+two-second budget per cycle, including network/lock waits. A failed or timed-out
+setting retains its last known value and is retried no sooner than 60 seconds
+later; it does not make the entire projector unavailable. Successful settings
+still update, and only changed values are published. If a power change or option
+change happens during a picture read, that stale result is discarded. This
+bounded refresh may take more than one cycle to cover every setting on a slow
+projector. Custom-command sensors are not included in this beta.
 
 ### Power transitions (2.3 beta)
 
@@ -191,7 +212,7 @@ command replaces the previous monitor; power commands are
 never automatically resent.
 
 During this window, confirmed ADCP readings take priority over potentially
-stale SDAP power announcements. Normal input/signal polling pauses, but DHCP
+stale SDAP power announcements. Normal input/signal and picture polling pauses, but DHCP
 address changes are still handled. Normal SDAP updates and periodic refreshes
 resume afterward. Power changes made with a remote control do not start fast
 polling.
@@ -208,7 +229,7 @@ continue to appear as an on media player until standby is confirmed.
 
 The 2.3 beta is developed on `beta/2.3-power-transitions`; stable releases remain
 on `master`. In HACS, enable prerelease versions for this repository if needed,
-then use **Redownload** to select `v2.3.0b2` and restart Home Assistant. No
+then use **Redownload** to select `v2.3.0b3` and restart Home Assistant. No
 integration reconfiguration is required. To roll back, redownload `v2.2.4` and
 restart again.
 

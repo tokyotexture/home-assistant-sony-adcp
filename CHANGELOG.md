@@ -2,6 +2,25 @@
 
 All notable changes to Sony ADCP Projector are documented here.
 
+## 2.3.0b3 (prerelease)
+
+- Added **Include picture settings**, enabled by default, to the integration's
+  Configure screen. Supported, enabled controls now share the configurable
+  input/signal refresh interval: picture mode, brightness, contrast, sharpness,
+  light output, Reality Creation resolution/noise, and video mute.
+- Update the existing entities when values change through the projector's own
+  remote or menus. Disabled entities are not periodically queried, and commands
+  are deduplicated on the existing serialized ADCP connection.
+- Publish input/signal before picture reads; query picture mode before dependent
+  controls. Limit picture reads to a two-second budget per cycle and back off
+  failed/timed-out settings for 60 seconds, preserving last known values.
+- Stop optional reads during power commands/transitions, discard stale replies
+  after power/option changes, and avoid overlapping refresh cycles. Existing
+  60-second startup and 5-minute shutdown monitoring limits are unchanged.
+- Added 18 picture-refresh tests, bringing the suite to 61. Custom-command
+  sensors remain a separate feature; hardware testing is needed for this beta.
+- Corrected outdated options-screen text that claimed power was never polled.
+
 ## 2.3.0b2 (prerelease)
 
 - Keep startup monitoring bounded to 60 seconds, but extend shutdown monitoring
