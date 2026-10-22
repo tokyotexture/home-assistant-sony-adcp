@@ -13,6 +13,9 @@ from homeassistant.core import HomeAssistant, callback
 from .const import (
     DEFAULT_SOURCES,
     NUMBER_COMMANDS,
+    POWER_OFF_STATES,
+    POWER_TRANSITION_INTERVAL,
+    POWER_TRANSITION_TIMEOUT,
     POWER_WATCHDOG_INTERVAL,
     SDAP_POWER_STATES,
     SELECT_COMMANDS,
@@ -65,6 +68,11 @@ class ProjectorManager:
         self._operational_refresh_interval = operational_refresh_interval
         self._operational_refresh_task: asyncio.Task[None] | None = None
         self._power_watchdog_task: asyncio.Task[None] | None = None
+        self._power_transition_task: asyncio.Task[None] | None = None
+        self._power_transition_target: str | None = None
+        self._power_command_lock = asyncio.Lock()
+        self._power_revision = 0
+        self._closed = False
         self._availability_timer: asyncio.TimerHandle | None = None
         self._capabilities_probed = False
 
@@ -72,6 +80,11 @@ class ProjectorManager:
     def sources(self) -> tuple[str, ...]:
         info = self.command_info.get("input")
         return info.choices if info and info.choices else DEFAULT_SOURCES
+
+    @property
+    def power_transition_target(self) -> str | None:
+        """Requested endpoint while the bounded power refresh is active."""
+        return self._power_transition_target
 
     @callback
     def async_add_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
@@ -129,6 +142,8 @@ class ProjectorManager:
             *NUMBER_COMMANDS,
         )
         for command in commands:
+            if self._closed or self._power_transition_target is not None:
+                return
             try:
                 info = await self.client.async_get_command_info(command)
             except AdcpAuthenticationError:
@@ -143,8 +158,15 @@ class ProjectorManager:
 
     async def async_refresh(self, *, include_diagnostics: bool = False) -> None:
         """Refresh after setup, command completion, or a push announcement."""
+        if self._closed or self._power_transition_target is not None:
+            return
+        revision = self._power_revision
         try:
             power = await self.client.async_get_power()
+            if self._closed or revision != self._power_revision:
+                return
+            self._apply_power_status(power)
+            revision = self._power_revision
             source = self.state.source
             signal = self.state.signal
             errors = self.state.errors
@@ -158,9 +180,11 @@ class ProjectorManager:
             else:
                 source = None
                 signal = None
+            # A command or a newer power report can arrive during optional I/O.
+            if self._closed or revision != self._power_revision:
+                return
             self.state = replace(
                 self.state,
-                power_status=power,
                 source=source,
                 signal=signal,
                 errors=errors,
@@ -168,11 +192,31 @@ class ProjectorManager:
                 available=True,
             )
         except AdcpAuthenticationError:
+            if self._closed or revision != self._power_revision:
+                return
             self._auth_failed()
             self.state = replace(self.state, available=False)
         except AdcpError:
+            if self._closed or revision != self._power_revision:
+                return
             self.state = replace(self.state, available=False)
         self._notify()
+        self._update_operational_refresh_task()
+
+    @callback
+    def _apply_power_status(self, power: str) -> None:
+        """Publish confirmed power without waiting for optional status reads."""
+        self._power_revision += 1
+        updated = replace(
+            self.state,
+            power_status=power,
+            source=self.state.source if power == "on" else None,
+            signal=self.state.signal if power == "on" else None,
+            available=True,
+        )
+        if updated != self.state:
+            self.state = updated
+            self._notify()
         self._update_operational_refresh_task()
 
     async def async_read_command(self, command: str) -> str | None:
@@ -192,6 +236,8 @@ class ProjectorManager:
     @callback
     def async_handle_announcement(self, projector: DiscoveredProjector) -> None:
         """Apply pushed power immediately; query only when it changes."""
+        if self._closed:
+            return
         if projector.model and not self.identity.model:
             self.identity = ProjectorIdentity(
                 projector.model, projector.serial, self.identity.mac_address
@@ -202,24 +248,15 @@ class ProjectorManager:
             else None
         )
         power_changed = (
-            announced_power is not None
+            self._power_transition_target is None
+            and announced_power is not None
             and announced_power != self.state.power_status
         )
         host_changed = projector.host != self.client.host
-        if announced_power is not None:
-            self.state = replace(
-                self.state,
-                power_status=announced_power,
-                source=(
-                    self.state.source if announced_power == "on" else None
-                ),
-                signal=(
-                    self.state.signal if announced_power == "on" else None
-                ),
-                available=True,
-            )
-            self._notify()
-            self._update_operational_refresh_task()
+        # During a commanded transition, a delayed SDAP packet must not replace
+        # a newer ADCP reading or prematurely finish the requested transition.
+        if announced_power is not None and self._power_transition_target is None:
+            self._apply_power_status(announced_power)
         if self._availability_timer is not None:
             self._availability_timer.cancel()
         self._availability_timer = asyncio.get_running_loop().call_later(
@@ -237,6 +274,8 @@ class ProjectorManager:
         if announced_host != self.client.host:
             await self.client.async_set_host(announced_host)
             self._host_changed(announced_host)
+        if self._closed or self._power_transition_target is not None:
+            return
         await self.async_refresh()
         if (
             not self._capabilities_probed
@@ -245,12 +284,72 @@ class ProjectorManager:
             await self.async_probe_capabilities()
 
     async def async_turn_on(self) -> None:
-        await self._async_control(self.client.async_set_power(True))
-        await self.async_refresh()
+        await self._async_set_power(True)
 
     async def async_turn_off(self) -> None:
-        await self._async_control(self.client.async_set_power(False))
-        await self.async_refresh()
+        await self._async_set_power(False)
+
+    async def _async_set_power(self, power: bool) -> None:
+        """Send power once, then monitor the requested endpoint in background."""
+        async with self._power_command_lock:
+            if self._closed:
+                return
+            await self._async_control(self.client.async_set_power(power))
+            if self._closed:
+                return
+            previous = self._power_transition_task
+            if previous is not None and not previous.done():
+                previous.cancel()
+                await asyncio.gather(previous, return_exceptions=True)
+            self._power_revision += 1
+            self._power_transition_target = "on" if power else "off"
+            self._power_transition_task = self.hass.async_create_background_task(
+                self._async_power_transition_loop(power),
+                "Refresh Sony projector power transition",
+            )
+            self._update_operational_refresh_task()
+            self._notify()
+
+    async def _async_power_transition_loop(self, power: bool) -> None:
+        """Query only power once a second, for at most the transition timeout."""
+        target_states = {"on"} if power else POWER_OFF_STATES
+        reached_target = False
+        try:
+            # Includes connection setup, retries, lock waits, and the final read.
+            async with asyncio.timeout(POWER_TRANSITION_TIMEOUT):
+                while True:
+                    try:
+                        status = await self.client.async_get_power()
+                    except AdcpAuthenticationError:
+                        self._auth_failed()
+                        self.state = replace(self.state, available=False)
+                        break
+                    except AdcpError:
+                        self.state = replace(self.state, available=False)
+                        self._notify()
+                    else:
+                        self._apply_power_status(status)
+                        if status in target_states:
+                            reached_target = True
+                            break
+                    await asyncio.sleep(POWER_TRANSITION_INTERVAL)
+        except TimeoutError:
+            _LOGGER.debug("Power transition to %s timed out", self._power_transition_target)
+        finally:
+            self._power_transition_task = None
+            self._power_transition_target = None
+            self._notify()
+            self._update_operational_refresh_task()
+            if (
+                reached_target
+                and power
+                and not self._closed
+                and (self._refresh_task is None or self._refresh_task.done())
+            ):
+                self._refresh_task = self.hass.async_create_task(
+                    self._async_refresh_after_announcement(self.client.host),
+                    "Refresh Sony projector after power transition",
+                )
 
     async def async_select_source(self, source: str) -> None:
         await self._async_control(self.client.async_set_input(source))
@@ -292,18 +391,22 @@ class ProjectorManager:
         self._update_operational_refresh_task()
 
     async def async_close(self) -> None:
-        if self._refresh_task is not None and not self._refresh_task.done():
-            self._refresh_task.cancel()
-        if (
-            self._operational_refresh_task is not None
-            and not self._operational_refresh_task.done()
-        ):
-            self._operational_refresh_task.cancel()
-        if (
-            self._power_watchdog_task is not None
-            and not self._power_watchdog_task.done()
-        ):
-            self._power_watchdog_task.cancel()
+        self._closed = True
+        tasks = [
+            task
+            for task in (
+                self._refresh_task,
+                self._operational_refresh_task,
+                self._power_watchdog_task,
+                self._power_transition_task,
+            )
+            if task is not None and not task.done()
+        ]
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        self._power_transition_task = None
+        self._power_transition_target = None
         if self._availability_timer is not None:
             self._availability_timer.cancel()
         await self.client.async_close()
@@ -311,6 +414,8 @@ class ProjectorManager:
     @callback
     def _mark_push_unavailable(self) -> None:
         """Mark unavailable after more than three default SDAP intervals."""
+        if self._closed or self._power_transition_target is not None:
+            return
         self.state = replace(self.state, available=False)
         self._notify()
         self._update_operational_refresh_task()
@@ -319,7 +424,9 @@ class ProjectorManager:
     def _update_operational_refresh_task(self) -> None:
         """Run the operational refresh loop only while the projector is on."""
         should_run = (
-            self._operational_refresh_interval > 0
+            not self._closed
+            and self._power_transition_target is None
+            and self._operational_refresh_interval > 0
             and self.state.power_status == "on"
             and self.state.available
         )
@@ -352,8 +459,11 @@ class ProjectorManager:
 
     async def _async_refresh_operational(self) -> None:
         """Query input and signal without polling power or image settings."""
+        revision = self._power_revision
         source = await self._optional_value("input", self.state.source)
         signal = await self._optional_value("signal", self.state.signal)
+        if self._closed or revision != self._power_revision:
+            return
         updated = replace(self.state, source=source, signal=signal)
         if updated != self.state:
             self.state = updated
