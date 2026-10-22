@@ -61,17 +61,17 @@ before sharing, and never post passwords.
 ## Upgrading
 
 Restart Home Assistant after updating integration files through HACS or manually.
-The stable release is **v2.3.0**; the current 2.4 testing release is **v2.4.0b4**.
-For beta testing, enable prerelease versions in HACS and select the beta through
-**Redownload**. Installing the stable release does not enable the beta's custom
-sensors or Query/Send actions. See the [changelog](../CHANGELOG.md) for history.
+The stable release is **v2.4.0**, including custom sensors and Query/Send actions.
+Prerelease versions are not required. If upgrading from a 2.4 beta, use
+**Redownload** to select v2.4.0 if needed; keep the integration and existing
+sensors in place. See the [changelog](../CHANGELOG.md) for history.
 
 ### From 2.4 beta 1
 
 Beta 1 could assign the shared projector device to a custom-sensor subentry,
 making the media-player power control disappear on affected HA versions.
-Beta 2 and later keep all entities under the parent projector and automatically
-migrate remaining beta 1 sensor settings/IDs on restart. **Do not delete/re-add
+Stable 2.4 (and beta 2 or later) keeps all entities under the parent projector and
+automatically migrates remaining beta 1 sensor settings/IDs on restart. **Do not delete/re-add
 the integration or manually remove beta 1 sensors before upgrading.** Registry
 customizations already deleted by beta 1 cannot be reconstructed; check recreated
 entity IDs and automations. See [full migration details](custom-sensors.md#upgrading-from-beta-1).
@@ -79,10 +79,10 @@ entity IDs and automations. See [full migration details](custom-sensors.md#upgra
 Add/edit/remove sensors through **Configure → Custom sensors**, not the top-right
 plus button or **Add device**. Configure also contains **Refresh settings**.
 
-### Rolling back from the 2.4 beta
+### Rolling back to 2.3
 
 First remove custom sensors through **Configure → Custom sensors** while still
-on the 2.4 beta. Then redownload stable v2.3.0 and restart HA. Automations calling
+on 2.4. Then redownload v2.3.0 and restart HA. Automations calling
 the new ADCP actions will not work on stable 2.3; disable or adapt them before
 downgrading. Do not downgrade to beta 1, which contains the ownership regression.
 
@@ -139,7 +139,7 @@ an integer-hour value, and shutdown must actually reach standby before its refre
 Check confirmed Sony power state, **Configure → Refresh settings**, enabled
 entities and custom-sensor `last_error`. Custom sensors pause while off or during
 transitions. Error/warning entities are setup snapshots, not continuous health
-monitoring. See [exact update rules](state-updates.md), [custom-sensor diagnostics](custom-sensors.md#troubleshooting-and-beta-test-checklist)
+monitoring. See [exact update rules](state-updates.md), [custom-sensor diagnostics](custom-sensors.md#troubleshooting-and-testing)
 and [action validation/readback](custom-commands.md#validation-and-scope).
 
 ### The icon does not update

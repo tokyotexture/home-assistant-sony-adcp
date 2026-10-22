@@ -1,4 +1,4 @@
-# Custom ADCP sensors (2.4 beta)
+# Custom ADCP sensors
 
 Custom sensors expose additional read-only ADCP values as named Home Assistant
 sensor entities. They belong to your existing projector and reuse its host,
@@ -10,23 +10,25 @@ Use these sensors as **custom monitors** in standard HA automations. The
 choices, write a supported setting and trigger an automation when its sensor
 changes, with startup/unavailable-state guards and polling limitations.
 
-This is experimental functionality in **v2.4.0b4**, on
-`beta/2.4-custom-sensors`. Stable v2.3.0 is unchanged. Model-specific commands
-and their response formats still need hardware testing.
+Available in stable **v2.4.0** and newer. The maintainer confirmed custom sensors
+and the Query/Send workflows on VPL-VW535, firmware 5.003. Model-specific commands
+and response formats can differ on other projectors.
 
-## Install the beta
+## Install or upgrade
 
-In HACS, open Sony ADCP Projector, choose **Redownload**, enable prerelease/beta
-versions if necessary, select **v2.4.0b4**, and restart Home Assistant. Back up
-your configuration first. Home Assistant 2026.3 or newer is required.
+In HACS, update Sony ADCP Projector to **v2.4.0** or newer and restart Home
+Assistant. Use **Redownload** to select the stable version if upgrading from a
+beta; prerelease versions are not required. Back up your configuration first.
+Home Assistant 2026.3 or newer is required.
 
-Beta 3 also adds a separate [Send ADCP command action](custom-commands.md).
-Beta 4 adds [Query ADCP command](custom-commands.md#query-current-values) for
+Use the separate [Send ADCP command action](custom-commands.md) for writes and
+[Query ADCP command](custom-commands.md#query-current-values) for
 one-off current-value, range and command-information reads without a sensor.
 Sensors remain read-only. A successful **write** action can immediately read back a
 matching enabled sensor while fully on, even when periodic refresh is Disabled;
 it does not wait for the next interval. Power/Execute/keys have different readback
-rules, explained in the action guide. The beta 2 ownership fix remains included.
+rules, explained in the action guide. The beta 2 ownership fix remains included
+in stable 2.4; remaining beta 1 configurations migrate automatically.
 
 ## Add, edit or remove a sensor
 
@@ -50,7 +52,7 @@ To change refresh settings, use **Configure → Refresh settings**. Custom-senso
 configuration changes reload the integration; refresh options still apply
 immediately without a reload. At most **32 custom sensors** are supported.
 
-There is no separate **+ Add custom sensor** action in beta 2. **Add device**
+There is no separate **+ Add custom sensor** action. **Add device**
 still means another projector, not another value.
 
 ### Upgrading from beta 1
@@ -59,7 +61,7 @@ Beta 1 incorrectly assigned the same physical projector device to multiple
 sensor subentries. On affected Home Assistant versions this could remove the
 media-player entity and its power control when adding a custom sensor.
 
-Beta 2 migrates remaining beta 1 sensors automatically during the first restart:
+Stable 2.4 (and beta 2 or later) migrates remaining beta 1 sensors automatically:
 it saves the settings in the projector's options, reparents existing entity and
 device registrations, then removes the obsolete subentries. Existing sensor IDs,
 entity IDs and user customizations are kept where those registrations still
@@ -96,7 +98,7 @@ JSON field, text mode can show the whole response if it fits Home Assistant's
 - Custom queries run in the existing **Refresh interval** loop (10 seconds by
   default; 5, 10, 30, or Disabled). The projector must be available and confirmed
   fully `on`. The first read is at the next eligible cycle, not when saving.
-  Beta 3 can also supply that first read through a successful matching write
+  The integration can also supply that first read through a successful matching write
   action or built-in picture-setting readback; see the action guide.
 - Each cycle publishes input/signal first, then optional picture settings, then
   custom sensors. **Include picture settings** does not disable custom sensors.
@@ -131,14 +133,14 @@ JSON field, text mode can show the whole response if it fits Home Assistant's
 
 The separate write action can read back matching enabled sensors immediately;
 matching built-in picture-setting controls now also publish their successful
-readbacks to custom sensors. The beta 4 Query ADCP command action returns a fresh
+readbacks to custom sensors. The Query ADCP command action returns a fresh
 response to its caller only; it does not update these sensor entities or their schedule.
 SDAP announcements and
 the power watchdog do not directly refresh custom values. A custom query of a
 built-in value follows the rules above; it does not change that built-in entity's
 own refresh behavior. See [all state-update rules](state-updates.md).
 
-## Troubleshooting and beta test checklist
+## Troubleshooting and testing
 
 Inspect the sensor in **Developer tools → States**. Its attributes show
 `adcp_command`, `json_field` and `last_error`:
@@ -161,5 +163,6 @@ on/off cycle. Report model, firmware, command, selected path/type, and observed
 behavior; do not include passwords or sensitive raw replies.
 
 To roll back cleanly, first remove custom sensors through **Configure → Custom
-sensors** while still on the 2.4 beta, then redownload stable v2.3.0 in HACS and restart.
+sensors** while still on 2.4, then redownload v2.3.0 in HACS and restart.
+Disable or adapt automations that call the 2.4 actions before downgrading.
 Do not downgrade to beta 1: it contains the device-ownership regression.

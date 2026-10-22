@@ -1,7 +1,8 @@
 # Discover, control and monitor your projector
 
-For **2.4 beta 4 or newer**. Install the beta through HACS and restart Home
-Assistant first. Stable v2.3.0 does not include these custom-command features.
+For **2.4.0 or newer**. Update through HACS and restart Home Assistant first;
+prerelease versions are not required. Older stable v2.3.0 does not include these
+custom-command features.
 
 Build automations around additional projector settings without waiting for a
 dedicated built-in entity: query a supported command, discover allowed values,

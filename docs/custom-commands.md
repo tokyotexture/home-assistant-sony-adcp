@@ -1,9 +1,9 @@
 # Send and query custom ADCP commands
 
-Available in **v2.4.0b4**, an opt-in 2.4 prerelease. Stable v2.3.0 is unchanged.
+Available in stable **v2.4.0** and newer.
 Custom sensors remain read-only. The separate **Sony ADCP Projector: Send ADCP
 command** action changes settings or performs an operation on an existing projector.
-Beta 4 adds **Query ADCP command** for one-off reads and metadata discovery.
+Use **Query ADCP command** for one-off reads and metadata discovery.
 
 Start with [Discover, control and monitor your projector](automation-examples.md)
 for copyable scripts that query `aspect`, check choices before writing, wait for
@@ -12,7 +12,7 @@ detailed action reference. Support is model-specific; this is not a raw terminal
 
 ## Query current values
 
-After installing v2.4.0b4 through HACS and restarting Home Assistant:
+After installing v2.4.0 or newer through HACS and restarting Home Assistant:
 
 1. Open **Developer Tools → Actions** and select **Sony ADCP Projector: Query
    ADCP command** (`sony_adcp.query_command`).
@@ -88,7 +88,7 @@ are not remembered by this action: a later call attempts a fresh query again.
 
 ## Use the Home Assistant UI
 
-1. Install v2.4.0b4 through HACS with prerelease versions enabled, then restart HA.
+1. Install v2.4.0 or newer through HACS, then restart HA. No prerelease option is needed.
 2. Open **Developer Tools → Actions**, or add an action in an automation/script.
 3. Find **Sony ADCP Projector: Send ADCP command** (`sony_adcp.send_command`).
 4. Select the **Projector** device, enter a **Command** name, and choose an
@@ -118,8 +118,8 @@ These are real documented command names and choices, **not a guarantee of suppor
 on every projector**. The PDF's model columns matter; its professional-model list
 does not establish support on VPL-VW/XW home-cinema models. Check your model's
 manual and returned metadata. The maintainer has tested a `color_temp` custom
-sensor and a lowercase `d65` write on VPL-VW535. Other operations and the new
-query action still need hardware testing.
+sensor, lowercase `d65` writes and the query/write workflows on VPL-VW535 with
+firmware 5.003. Other models and commands still require model-specific validation.
 
 | Intent | Command | Operation | Value | ADCP message (CRLF appended automatically) | Sony reference |
 | --- | --- | --- | --- | --- | --- |
@@ -282,7 +282,7 @@ Responses are normalized ADCP strings, not parsed sensor values. Without a respo
 variable the same action works normally. Rejection, authentication, connection and
 uncertain-outcome failures are HA action exceptions, not successful error responses.
 
-## Beta testing
+## Testing and compatibility reports
 
 Start with a benign, supported setting and an existing custom sensor; verify that
 its value updates immediately and the power control remains visible. Test the

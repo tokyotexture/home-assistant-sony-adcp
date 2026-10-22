@@ -1,14 +1,14 @@
 # How values update
 
-This reference describes **v2.4.0b4**, including the stable v2.3.0 behavior plus
-experimental [custom ADCP sensors](custom-sensors.md). Stable v2.3.0 does not
+This reference describes stable **v2.4.0**, including the v2.3.0 behavior plus
+[custom ADCP sensors](custom-sensors.md). Older v2.3.0 does not
 include custom sensors or the [Send/Query ADCP command actions](custom-commands.md).
 
-Beta 4's [Query ADCP command](custom-commands.md#query-current-values) returns a
+The [Query ADCP command](custom-commands.md#query-current-values) returns a
 fresh value, range or metadata to its caller. It never changes entity state or
 the update triggers listed below. It works with periodic refresh Disabled but
 is rejected during fast power monitoring, with a 30-second whole-action deadline.
-Power timings are unchanged. Beta 3 adds immediate matching-entity readback after
+Power timings are unchanged. Version 2.4 adds immediate matching-entity readback after
 acknowledged readable custom writes; it does not add another polling loop.
 
 For copyable scripts and a state-change automation, see [Discover, control and
@@ -97,7 +97,7 @@ For the table:
 | Warnings diagnostic sensor | `warning ?` | Same setup-only behavior as Errors. Not part of either periodic loop or shutdown refresh. |
 | Operation hours diagnostic sensor | `timer ?` → `operation` | One shared counter read at setup and on a transition from a known non-standby state into `standby`/`saving_standby`. Also retry on transitions to `on` while no counters are known, unless the command is known unsupported. No periodic refresh. |
 | Light-source hours diagnostic sensor | `timer ?` → `light_src` | Same shared read and triggers as Operation hours. Only returned counters get sensors. |
-| User-named custom sensor (2.4 beta) | Configured command name + ` ?` | Configured refresh when enabled, available and fully on, outside fast power monitoring. Beta 3 also reads a matching enabled sensor once after an acknowledged readable custom action or matching built-in setting write, while fully on, even when periodic refresh is Disabled. Independent of Include picture settings. Deduplicated per command/cycle, with a separate two-second periodic batch budget, rotation and 60-second query-failure backoff. Unavailable until a valid read and while off/transitioning. Power changes clear caches. JSON conversion errors affect only that sensor. See [full rules and configuration](custom-sensors.md) and [custom action readback](custom-commands.md#acknowledgements-readback-and-failures). |
+| User-named custom sensor | Configured command name + ` ?` | Configured refresh when enabled, available and fully on, outside fast power monitoring. Also reads a matching enabled sensor once after an acknowledged readable custom action or matching built-in setting write, while fully on, even when periodic refresh is Disabled. Independent of Include picture settings. Deduplicated per command/cycle, with a separate two-second periodic batch budget, rotation and 60-second query-failure backoff. Unavailable until a valid read and while off/transitioning. Power changes clear caches. JSON conversion errors affect only that sensor. See [full rules and configuration](custom-sensors.md) and [custom action readback](custom-commands.md#acknowledgements-readback-and-failures). |
 
 Numeric entities are created only when the projector reports a minimum and
 maximum for that command. Picture mode and Video mute are offered but may be
@@ -401,9 +401,9 @@ It does **not** query the projector or make stale values fresh.
   delay, empty/unknown values outside `on`, failed reads, and network availability.
   No selected interval guarantees a precise timestamp for physical signal lock.
 
-The 2.4 beta adds named, read-only [custom-command sensors](custom-sensors.md),
+Version 2.4 adds named, read-only [custom-command sensors](custom-sensors.md),
 not fixed custom1/custom2 slots. They use the configured refresh loop, never
-the power monitor. Beta 3 adds a separate [structured write action](custom-commands.md)
+the power monitor. It also adds a separate [structured write action](custom-commands.md)
 and immediate matching-entity readback after successful readable writes. No raw
 protocol strings or executable response templates are provided.
 
