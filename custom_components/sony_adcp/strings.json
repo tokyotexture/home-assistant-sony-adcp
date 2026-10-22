@@ -67,12 +67,14 @@
     "step": {
       "init": {
         "title": "Projector status refresh",
-        "description": "Choose how often Home Assistant checks the active input and signal while the projector is on. Power always uses Sony's push announcements and is never polled.",
+        "description": "Choose how often to refresh input, signal, and optional picture settings while the projector is fully on. Normal refresh pauses during fast power-transition monitoring.",
         "data": {
-          "operational_refresh_interval": "Input and signal refresh"
+          "operational_refresh_interval": "Refresh interval",
+          "refresh_picture_settings": "Include picture settings"
         },
         "data_description": {
-          "operational_refresh_interval": "Changes apply immediately. No checks are made while the projector is off."
+          "operational_refresh_interval": "Changes apply immediately. Disabled stops periodic input, signal, and picture-setting checks, but not SDAP or power monitoring.",
+          "refresh_picture_settings": "Refresh supported, enabled picture controls at the same interval: picture mode, sharpness, brightness, contrast, light output, Reality Creation, and video mute. Off keeps input and signal refresh only."
         }
       }
     }
@@ -114,6 +116,12 @@
       }
     },
     "sensor": {
+      "timer_operation": {
+        "name": "Operation hours"
+      },
+      "timer_light_src": {
+        "name": "Light-source hours"
+      },
       "power_status": {
         "name": "Power status"
       },

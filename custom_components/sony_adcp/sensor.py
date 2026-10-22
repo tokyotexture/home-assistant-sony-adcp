@@ -5,8 +5,14 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
-from homeassistant.core import HomeAssistant
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorEntityDescription,
+    SensorStateClass,
+)
+from homeassistant.const import UnitOfTime
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
@@ -19,7 +25,7 @@ from .manager import ProjectorManager, ProjectorState
 class SonySensorDescription(SensorEntityDescription):
     """Describe a projector status sensor."""
 
-    value_fn: Callable[[ProjectorState], str | None]
+    value_fn: Callable[[ProjectorState], str | int | None]
 
 
 SENSORS = (
@@ -47,6 +53,19 @@ SENSORS = (
     ),
 )
 
+TIMER_SENSORS = tuple(
+    SonySensorDescription(
+        key=f"timer_{command}",
+        translation_key=f"timer_{command}",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        device_class=SensorDeviceClass.DURATION,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement=UnitOfTime.HOURS,
+        value_fn=lambda state, key=command: state.timer_hours.get(key),
+    )
+    for command in ("operation", "light_src")
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -57,6 +76,25 @@ async def async_setup_entry(
     async_add_entities(
         SonyAdcpSensor(entry, manager, description) for description in SENSORS
     )
+    known: set[str] = set()
+
+    @callback
+    def add_timer_sensors() -> None:
+        new_sensors = [
+            description
+            for description in TIMER_SENSORS
+            if description.key not in known
+            and description.value_fn(manager.state) is not None
+        ]
+        if not new_sensors:
+            return
+        known.update(description.key for description in new_sensors)
+        async_add_entities(
+            SonyAdcpSensor(entry, manager, description) for description in new_sensors
+        )
+
+    add_timer_sensors()
+    entry.async_on_unload(manager.async_add_listener(add_timer_sensors))
 
 
 class SonyAdcpSensor(SonyAdcpEntity, SensorEntity):
@@ -75,5 +113,5 @@ class SonyAdcpSensor(SonyAdcpEntity, SensorEntity):
         self._attr_unique_id = f"{entry.unique_id}_{description.key}"
 
     @property
-    def native_value(self) -> str | None:
+    def native_value(self) -> str | int | None:
         return self.entity_description.value_fn(self._manager.state)

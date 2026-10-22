@@ -8,13 +8,20 @@ DOMAIN: Final = "sony_adcp"
 
 CONF_DISCOVERED_HOST: Final = "discovered_host"
 CONF_OPERATIONAL_REFRESH_INTERVAL: Final = "operational_refresh_interval"
+CONF_REFRESH_PICTURE_SETTINGS: Final = "refresh_picture_settings"
 DEFAULT_NAME: Final = "Sony Projector"
 DEFAULT_PORT: Final = 53595
 DEFAULT_SOURCES: Final = ("hdmi1", "hdmi2")
 DEFAULT_OPERATIONAL_REFRESH_INTERVAL: Final = 10
+DEFAULT_REFRESH_PICTURE_SETTINGS: Final = True
+PICTURE_REFRESH_BUDGET: Final = 2.0
+PICTURE_REFRESH_RETRY_INTERVAL: Final = 60
 OPERATIONAL_REFRESH_INTERVALS: Final = (0, 5, 10, 30)
 # Periodically verify power state in case SDAP announcements are missed or stale.
 POWER_WATCHDOG_INTERVAL: Final = 60
+POWER_TRANSITION_INTERVAL: Final = 1
+POWER_ON_TRANSITION_TIMEOUT: Final = 60
+POWER_OFF_TRANSITION_TIMEOUT: Final = 300
 ADVERTISEMENT_PORT: Final = 53862
 COMMAND_TIMEOUT: Final = 5.0
 DISCOVERY_TIMEOUT: Final = 35.0

@@ -14,8 +14,10 @@ from homeassistant.helpers import device_registry as dr
 
 from .const import (
     CONF_OPERATIONAL_REFRESH_INTERVAL,
+    CONF_REFRESH_PICTURE_SETTINGS,
     DEFAULT_OPERATIONAL_REFRESH_INTERVAL,
     DEFAULT_PORT,
+    DEFAULT_REFRESH_PICTURE_SETTINGS,
     DOMAIN,
     PLATFORMS,
 )
@@ -85,6 +87,9 @@ async def async_setup_entry(
                 CONF_OPERATIONAL_REFRESH_INTERVAL,
                 DEFAULT_OPERATIONAL_REFRESH_INTERVAL,
             )
+        ),
+        refresh_picture_settings=entry.options.get(
+            CONF_REFRESH_PICTURE_SETTINGS, DEFAULT_REFRESH_PICTURE_SETTINGS
         ),
     )
     try:

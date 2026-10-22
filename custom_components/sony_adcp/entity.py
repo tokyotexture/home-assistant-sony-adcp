@@ -33,6 +33,7 @@ class SonyAdcpEntity(Entity):
             manufacturer="Sony",
             model=identity.model,
             serial_number=identity.serial,
+            sw_version=identity.firmware,
             connections=(
                 {(CONNECTION_NETWORK_MAC, identity.mac_address)}
                 if identity.mac_address

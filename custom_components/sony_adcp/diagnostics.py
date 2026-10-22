@@ -22,6 +22,7 @@ async def async_get_config_entry_diagnostics(
             "model": manager.identity.model,
             "serial": manager.identity.serial,
             "mac_address": manager.identity.mac_address,
+            "firmware": manager.identity.firmware,
         },
         "state": {
             "power_status": manager.state.power_status,
@@ -29,6 +30,7 @@ async def async_get_config_entry_diagnostics(
             "signal": manager.state.signal,
             "errors": manager.state.errors,
             "warnings": manager.state.warnings,
+            "timer_hours": manager.state.timer_hours,
             "available": manager.state.available,
         },
         "capabilities": {

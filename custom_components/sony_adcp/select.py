@@ -39,6 +39,7 @@ class SonyAdcpSelect(SonyAdcpEntity, SelectEntity):
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
+        self.async_on_remove(self._manager.async_track_refresh_command(self._command))
         await self._manager.async_read_command(self._command)
 
     @property

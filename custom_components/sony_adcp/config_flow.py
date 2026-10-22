@@ -26,9 +26,11 @@ from . import async_get_listener
 from .const import (
     CONF_DISCOVERED_HOST,
     CONF_OPERATIONAL_REFRESH_INTERVAL,
+    CONF_REFRESH_PICTURE_SETTINGS,
     DEFAULT_NAME,
     DEFAULT_OPERATIONAL_REFRESH_INTERVAL,
     DEFAULT_PORT,
+    DEFAULT_REFRESH_PICTURE_SETTINGS,
     DISCOVERY_TIMEOUT,
     DOMAIN,
     OPERATIONAL_REFRESH_INTERVALS,
@@ -293,13 +295,23 @@ class SonyAdcpOptionsFlow(OptionsFlow):
         """Configure refreshes for automation-relevant operational state."""
         if user_input is not None:
             interval = int(user_input[CONF_OPERATIONAL_REFRESH_INTERVAL])
+            refresh_picture_settings = user_input.get(
+                CONF_REFRESH_PICTURE_SETTINGS, DEFAULT_REFRESH_PICTURE_SETTINGS
+            )
             if self.config_entry.state is ConfigEntryState.LOADED:
+                self.config_entry.runtime_data.manager.async_set_refresh_picture_settings(
+                    refresh_picture_settings
+                )
                 self.config_entry.runtime_data.manager.async_set_operational_refresh_interval(
                     interval
                 )
             return self.async_create_entry(
                 title="",
-                data={CONF_OPERATIONAL_REFRESH_INTERVAL: interval},
+                data={
+                    **self.config_entry.options,
+                    CONF_OPERATIONAL_REFRESH_INTERVAL: interval,
+                    CONF_REFRESH_PICTURE_SETTINGS: refresh_picture_settings,
+                },
             )
 
         current = int(
@@ -323,7 +335,13 @@ class SonyAdcpOptionsFlow(OptionsFlow):
                             mode=SelectSelectorMode.DROPDOWN,
                             translation_key="operational_refresh_interval",
                         )
-                    )
+                    ),
+                    vol.Required(
+                        CONF_REFRESH_PICTURE_SETTINGS,
+                        default=self.config_entry.options.get(
+                            CONF_REFRESH_PICTURE_SETTINGS, DEFAULT_REFRESH_PICTURE_SETTINGS
+                        ),
+                    ): cv.boolean,
                 }
             ),
         )
