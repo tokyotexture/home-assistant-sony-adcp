@@ -355,6 +355,12 @@ class SonyAdcpCustomSensorFlow(ConfigSubentryFlow):
                 vol.Optional("unit", default=current.get("unit", "")): cv.string,
             }),
             errors=errors,
+            description_placeholders={
+                "documentation_url": (
+                    "https://github.com/tokyotexture/home-assistant-sony-adcp/"
+                    "blob/beta/2.4-custom-sensors/docs/custom-sensors.md"
+                ),
+            },
         )
 
 

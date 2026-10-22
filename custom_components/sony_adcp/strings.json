@@ -73,7 +73,7 @@
       "step": {
         "user": {
           "title": "Add custom ADCP sensor",
-          "description": "Read-only queries share your projector's refresh interval and run only while fully on. Enter a command name without arguments or ?. Support and response format are checked at the next scheduled refresh, not when saving. [Custom sensor documentation](https://github.com/tokyotexture/home-assistant-sony-adcp/blob/beta/2.4-custom-sensors/docs/custom-sensors.md)",
+          "description": "Read-only queries share your projector's refresh interval and run only while fully on. Enter a command name without arguments or ?. Support and response format are checked at the next scheduled refresh, not when saving. [Custom sensor documentation]({documentation_url})",
           "data": {
             "name": "Sensor name",
             "command": "ADCP command",
@@ -89,7 +89,7 @@
         },
         "reconfigure": {
           "title": "Edit custom ADCP sensor",
-          "description": "Saving reloads the projector integration. The sensor keeps its identity and history. [Custom sensor documentation](https://github.com/tokyotexture/home-assistant-sony-adcp/blob/beta/2.4-custom-sensors/docs/custom-sensors.md)",
+          "description": "Saving reloads the projector integration. The sensor keeps its identity and history. [Custom sensor documentation]({documentation_url})",
           "data": {
             "name": "Sensor name",
             "command": "ADCP command",
