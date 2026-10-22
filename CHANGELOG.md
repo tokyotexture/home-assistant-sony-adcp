@@ -2,6 +2,31 @@
 
 All notable changes to Sony ADCP Projector are documented here.
 
+## 2.3.0
+
+- Promoted the tested 2.3 beta functionality to a stable release after maintainer
+  hardware testing. No additional projector-control behavior changes from beta 4.
+- Added fast, bounded power monitoring after Home Assistant power commands:
+  immediate status read, then a one-second pause between attempts, with maximum
+  windows of 60 seconds for startup and 5 minutes for shutdown. Publish confirmed
+  startup/cooling states promptly; return to normal SDAP/watchdog monitoring when
+  the target is reached or the monitor stops
+  ([#16](https://github.com/tokyotexture/home-assistant-sony-adcp/issues/16)).
+- Added **Include picture settings**, enabled by default, for supported, enabled
+  picture mode, video mute, brightness, contrast, sharpness, light output, and
+  Reality Creation resolution/noise controls at the configured input/signal
+  interval. Bound optional reads and retain cached values on failures.
+- Added optional main firmware in device info, plus Operation hours and
+  Light-source hours sensors. Read counters at setup and after confirmed shutdown
+  to standby; no periodic hour polling is added
+  ([#12](https://github.com/tokyotexture/home-assistant-sony-adcp/issues/12)).
+- Added a complete per-entity refresh reference, including power deadlines,
+  command readbacks, disabled-refresh behavior, and stale diagnostic limitations.
+- Fixed the large README image inside HACS by using an absolute image URL.
+  The separate HACS listing-icon limitation is not fixed by this release.
+- Includes 92 regression tests covering protocol cancellation, power transitions,
+  picture refresh, firmware/counters, authentication, DHCP changes, and lifecycle.
+
 ## 2.3.0b4 (prerelease)
 
 - Added optional main firmware from `version ?` to device info, read once at

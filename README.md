@@ -89,7 +89,7 @@ do not support them.
 | Model | Firmware | Notes |
 | --- | --- | --- |
 | VPL-VW535 | | Development model |
-| VPL-XW5000ES (reports as VPL-XW5000) | 1.101 | Previously reported working; new 2.3 beta features still need hardware validation |
+| VPL-XW5000ES (reports as VPL-XW5000) | 1.101 | Previously reported working; optional capabilities vary by model |
 
 ## Installation
 
@@ -206,9 +206,9 @@ Only supported picture controls with enabled entities take part in periodic
 picture refresh. Their reads share a two-second budget per cycle and failed
 settings back off for at least 60 seconds, so the selected interval is not a
 guaranteed update deadline. See [refresh timing and failures](docs/state-updates.md#refresh-timing-and-failures).
-Custom-command sensors are not included in this beta.
+Custom-command sensors are not implemented.
 
-### Power transitions (2.3 beta)
+### Power transitions
 
 A successful Home Assistant turn-on or turn-off command starts one temporary
 async monitor, reusing the existing ADCP connection. It reads only
@@ -244,7 +244,7 @@ See [aggressive polling and timeout behavior](docs/state-updates.md#aggressive-p
 for the full sequence, retry/error handling, replacement commands, and what
 happens after monitoring ends.
 
-### Firmware and usage hours (2.3 beta)
+### Firmware and usage hours
 
 When supported, `version ?` supplies the `main` firmware version for the device
 page. The separate laser-module firmware is not used. Firmware is not polled;
@@ -274,28 +274,25 @@ or the command is confirmed unsupported. Shutdown reads
 run in the background so a slow counter reply does not delay the standby state.
 The counters are reported by the projector, not calculated by Home Assistant;
 the integration never resets them. Other niche commands from issue #12 are not
-added by this beta.
+included in this release.
 
 For the full entity list, media-player attributes, diagnostic limitations, and
 exact read triggers, see [How values update](docs/state-updates.md).
 
-### Testing prereleases
+### Updating to 2.3
 
-The 2.3 beta is developed on `beta/2.3-power-transitions`; stable releases remain
-on `master`. In HACS, enable prerelease versions for this repository if needed,
-then use **Redownload** to select `v2.3.0b4` and restart Home Assistant. No
-integration reconfiguration is required. To roll back, redownload `v2.2.4` and
-restart again.
+**v2.3.0 is the stable release**, incorporating the functionality tested in the
+2.3 betas. Update through HACS and restart Home Assistant. If needed, use
+**Redownload** to select `v2.3.0`. Prerelease versions are not required, and no
+integration reconfiguration is needed when upgrading from 2.2.4 or a 2.3 beta.
 
-Please test normal startup and shutdown, check that startup/cooling appear
-promptly, and verify the final on/standby state. Respect the projector's normal
-cooldown and avoid rapid power cycling. This beta has automated regression
-coverage but still needs real-projector validation.
+Include picture settings is enabled by default, including existing installations.
+Use **Configure** to change this or the value-refresh interval. Firmware and hour
+sensors appear only where supported; short sessions may not change integer-hour
+counters. Respect the projector's cooldown and avoid rapid power cycling.
 
-For beta 4, also check firmware on the device page and both usage-hour sensors
-where supported. Compare counters with the projector's own menu, then verify
-they refresh after a normal shutdown reaches standby. Short sessions may not
-change integer-hour counters. See [issue #12](https://github.com/tokyotexture/home-assistant-sony-adcp/issues/12).
+To roll back, use HACS Redownload to select `v2.2.4` and restart Home Assistant.
+The historical beta releases remain available, but are superseded by v2.3.0.
 
 ## DHCP address changes
 
