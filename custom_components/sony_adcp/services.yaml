@@ -39,3 +39,35 @@ send_command:
       example: "6500K"
       selector:
         text:
+query_command:
+  name: Query ADCP command
+  description: >-
+    Read a current value, allowed values/range, or command information. Returns
+    the projector reply without changing settings or creating a sensor.
+    Administrator access is required. Not available during fast power monitoring.
+  fields:
+    device_id:
+      name: Projector
+      description: The existing Sony ADCP projector device.
+      required: true
+      selector:
+        device:
+          integration: sony_adcp
+    command:
+      name: Command
+      description: Command name only, for example aspect or color_temp. Do not include ? or options.
+      required: true
+      example: aspect
+      selector:
+        text:
+    query_type:
+      name: Query type
+      description: Current value reads the setting. Other modes describe allowed values and support.
+      default: value
+      selector:
+        select:
+          translation_key: command_query_type
+          options:
+            - value
+            - range
+            - info

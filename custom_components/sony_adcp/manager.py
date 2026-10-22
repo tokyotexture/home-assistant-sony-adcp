@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
@@ -10,7 +11,7 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant, callback
 
-from .command_request import CommandRequest, CommandValidationError
+from .command_request import CommandRequest, CommandValidationError, QueryRequest
 from .const import (
     DEFAULT_REFRESH_PICTURE_SETTINGS,
     DEFAULT_SOURCES,
@@ -504,6 +505,49 @@ class ProjectorManager:
             self.client.async_command(f"{command} {formatted}", retry=False)
         )
         await self.async_read_command(command)
+
+    async def async_query_command(self, request: QueryRequest) -> dict[str, Any]:
+        """Perform a fresh read without changing entity caches or refresh schedules."""
+        task = asyncio.current_task()
+        assert task is not None
+        self._command_action_tasks.add(task)
+        try:
+            async with self._command_action_lock:
+                if self._closed:
+                    raise CommandValidationError("command_not_ready")
+                if self._power_transition_target is not None:
+                    raise CommandValidationError("command_during_transition")
+                async with self._operational_refresh_lock, self._power_command_lock:
+                    if self._closed or self._power_transition_target is not None:
+                        raise CommandValidationError("command_not_ready")
+                    revision = self._power_revision
+                    for index, frame in enumerate(request.frames):
+                        try:
+                            response = await self._async_control(self.client.async_command(frame))
+                            break
+                        except AdcpCommandError as err:
+                            # Only try Sony's alternate metadata syntax after a
+                            # format/option rejection, never after auth or IO errors.
+                            if index + 1 == len(request.frames) or err.response not in {
+                                "err_cmd", "err_option"
+                            }:
+                                raise
+                        if self._closed or revision != self._power_revision:
+                            raise CommandValidationError("query_stale")
+                    if self._closed or revision != self._power_revision:
+                        raise CommandValidationError("query_stale")
+                    data: Any = response
+                    # Preserve scalar strings (including numeric-looking choices).
+                    # Only structured JSON has an unambiguous type after normalization.
+                    if response.startswith(("[", "{")):
+                        try:
+                            data = json.loads(response)
+                        except json.JSONDecodeError:
+                            pass
+                    return {"command": request.command, "query_type": request.query_type,
+                            "response": response, "data": data}
+        finally:
+            self._command_action_tasks.discard(task)
 
     async def async_send_command(
         self, request: CommandRequest, *, result: dict[str, str] | None = None

@@ -1,4 +1,4 @@
-"""Structured, single-frame ADCP writes; never accept raw protocol options."""
+"""Structured ADCP requests; never accept raw protocol options."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from typing import Any
 from .protocol import CommandInfo
 
 OPERATIONS = ("set", "relative", "reset", "execute")
+QUERY_TYPES = ("value", "range", "info")
 _NAME = re.compile(r"[a-z][a-z0-9_]{0,63}", re.ASCII)
 _TEXT = re.compile(r"[A-Za-z0-9_+./: -]{1,400}", re.ASCII)
 _NUMBER = re.compile(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?", re.ASCII)
@@ -18,6 +19,32 @@ _NUMBER = re.compile(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?", re.ASCII)
 
 class CommandValidationError(ValueError):
     """A safe, translatable error key, containing no command payload."""
+
+
+@dataclass(frozen=True, slots=True)
+class QueryRequest:
+    """Read-only intent with only integration-generated protocol suffixes."""
+
+    command: str
+    query_type: str = "value"
+
+    @property
+    def frames(self) -> tuple[str, ...]:
+        if self.query_type == "value":
+            return (f"{self.command} ?",)
+        return (f"{self.command} --{self.query_type}",
+                f"{self.command} ? --{self.query_type}")
+
+
+def validate_query_request(data: Mapping[str, Any]) -> QueryRequest:
+    """Queries cannot carry write operations, values or raw protocol text."""
+    command = data.get("command")
+    if not isinstance(command, str) or _NAME.fullmatch(command) is None:
+        raise CommandValidationError("command_name_invalid")
+    query_type = data.get("query_type", "value")
+    if query_type not in QUERY_TYPES or set(data) - {"device_id", "command", "query_type"}:
+        raise CommandValidationError("query_type_invalid")
+    return QueryRequest(command, query_type)
 
 
 @dataclass(frozen=True, slots=True)
