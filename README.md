@@ -63,6 +63,8 @@ projector is fully on, at a configurable interval.
 > Beta 4 adds [Query ADCP command](docs/custom-commands.md#query-current-values):
 > read current values such as `aspect`, allowed values/ranges, or command information
 > directly in Developer Tools and scripts, without creating a sensor.
+> Start with [Discover, control and monitor your projector](docs/automation-examples.md)
+> for complete query → supported write → custom-sensor automation examples.
 
 - Native projector-class `media_player`
 - Automatic discovery through Sony SDAP advertisements
@@ -192,6 +194,22 @@ explains exactly when each entity is read and when it can become stale.
 | Light output number | Reported light-output value and range |
 | Reality Creation resolution number | Reported resolution-enhancement value and range |
 | Reality Creation noise filtering number | Reported noise-filtering value and range |
+
+## Custom automation workflow (2.4 beta)
+
+1. **Discover:** Query a known ADCP command's current value, allowed choices/range,
+   or command information. Use Sony's documentation for command names; querying
+   does not enumerate every command.
+2. **Control:** Send a supported structured command, or use a built-in entity.
+   Preserve the exact choices reported by your model.
+3. **Monitor:** Add a named custom sensor, then use its state in ordinary HA
+   triggers, conditions and dashboards. Remote-control changes are detected by
+   scheduled reads while fully on, not SDAP push messages.
+
+See the [copyable scripts and automation](docs/automation-examples.md), including
+response variables, startup waits, refresh timing and unavailable-state guards.
+This extends model-supported control; it is not an unrestricted terminal for raw,
+network or advanced-calibration commands.
 
 ## State updates
 
@@ -405,8 +423,10 @@ Lint the integration with Ruff:
 ruff check .
 ```
 
-CI also runs HACS, Home Assistant Hassfest, and real device/entity registry tests
-on Home Assistant 2026.3.0 and 2026.10.2. The registry tests run separately from
+CI also runs HACS, Home Assistant Hassfest, and real device/entity registry,
+action and documentation-example tests on Home Assistant 2026.3.0 and 2026.10.2.
+The copyable automation guide's YAML, ADCP payloads and metadata/startup guards
+are checked against real HA schemas/templates. These tests run separately from
 the offline harness in Python 3.14 environments with Home Assistant installed:
 
 ```bash

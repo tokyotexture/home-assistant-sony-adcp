@@ -2,6 +2,18 @@
 
 All notable changes to Sony ADCP Projector are documented here.
 
+## Unreleased documentation
+
+- Add an end-to-end discover → control → monitor guide with complete HA scripts
+  and a custom-sensor automation: read aspect ratio, check reported choices before
+  setting it, react to known-value changes, and wait for confirmed startup.
+- Clarify action response versus entity state, device/entity ID placeholders,
+  exact-case/model-specific support, polling/freshness limits, unavailable-state
+  guards and unsupported raw/network/calibration commands. No runtime or version
+  change; the published beta 4 tag remains unchanged.
+- Validate the guide's copyable YAML, action payloads and choice/startup/state
+  guards against real Home Assistant schemas and template rendering in CI.
+
 ## 2.4.0b4 (prerelease)
 
 - Add the admin-only, response-returning `sony_adcp.query_command` action for
