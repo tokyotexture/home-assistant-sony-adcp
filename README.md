@@ -1,6 +1,6 @@
 <p align="center">
   <img
-    src="custom_components/sony_adcp/brand/icon@2x.png"
+    src="https://raw.githubusercontent.com/tokyotexture/home-assistant-sony-adcp/master/custom_components/sony_adcp/brand/icon@2x.png"
     alt="Sony ADCP Projector"
     width="160"
   >
