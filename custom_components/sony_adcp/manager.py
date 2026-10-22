@@ -11,8 +11,11 @@ from typing import Any
 from homeassistant.core import HomeAssistant, callback
 
 from .const import (
+    DEFAULT_REFRESH_PICTURE_SETTINGS,
     DEFAULT_SOURCES,
     NUMBER_COMMANDS,
+    PICTURE_REFRESH_BUDGET,
+    PICTURE_REFRESH_RETRY_INTERVAL,
     POWER_OFF_STATES,
     POWER_OFF_TRANSITION_TIMEOUT,
     POWER_ON_TRANSITION_TIMEOUT,
@@ -20,6 +23,7 @@ from .const import (
     POWER_WATCHDOG_INTERVAL,
     SDAP_POWER_STATES,
     SELECT_COMMANDS,
+    SWITCH_COMMANDS,
 )
 from .discovery import DiscoveredProjector
 from .protocol import (
@@ -56,6 +60,7 @@ class ProjectorManager:
         auth_failed: Callable[[], None],
         host_changed: Callable[[str], None],
         operational_refresh_interval: int,
+        refresh_picture_settings: bool = DEFAULT_REFRESH_PICTURE_SETTINGS,
     ) -> None:
         self.hass = hass
         self.client = client
@@ -67,6 +72,11 @@ class ProjectorManager:
         self._listeners: set[Callable[[], None]] = set()
         self._refresh_task: asyncio.Task[None] | None = None
         self._operational_refresh_interval = operational_refresh_interval
+        self._refresh_picture_settings = refresh_picture_settings
+        self._picture_commands: dict[str, int] = {}
+        self._picture_retry_after: dict[str, float] = {}
+        self._picture_revision = 0
+        self._operational_refresh_lock = asyncio.Lock()
         self._operational_refresh_task: asyncio.Task[None] | None = None
         self._power_watchdog_task: asyncio.Task[None] | None = None
         self._power_transition_task: asyncio.Task[None] | None = None
@@ -235,6 +245,29 @@ class ProjectorManager:
         return value
 
     @callback
+    def async_track_refresh_command(self, command: str) -> Callable[[], None]:
+        """Track only enabled control entities, with one query per command."""
+        if command not in {*SELECT_COMMANDS, *NUMBER_COMMANDS, *SWITCH_COMMANDS}:
+            raise ValueError(f"Not a picture-setting command: {command}")
+        self._picture_commands[command] = self._picture_commands.get(command, 0) + 1
+        subscribed = True
+
+        @callback
+        def unsubscribe() -> None:
+            nonlocal subscribed
+            if not subscribed:
+                return
+            subscribed = False
+            remaining = self._picture_commands[command] - 1
+            if remaining:
+                self._picture_commands[command] = remaining
+            else:
+                del self._picture_commands[command]
+                self._picture_retry_after.pop(command, None)
+
+        return unsubscribe
+
+    @callback
     def async_handle_announcement(self, projector: DiscoveredProjector) -> None:
         """Apply pushed power immediately; query only when it changes."""
         if self._closed:
@@ -392,6 +425,13 @@ class ProjectorManager:
         self._operational_refresh_task = None
         self._update_operational_refresh_task()
 
+    @callback
+    def async_set_refresh_picture_settings(self, enabled: bool) -> None:
+        """Apply picture refresh options without reloading or extra tasks."""
+        if enabled != self._refresh_picture_settings:
+            self._refresh_picture_settings = enabled
+            self._picture_revision += 1
+
     async def async_close(self) -> None:
         self._closed = True
         tasks = [
@@ -444,7 +484,7 @@ class ProjectorManager:
             # "Setup timed out for bootstrap" on every restart.
             self._operational_refresh_task = self.hass.async_create_background_task(
                 self._async_operational_refresh_loop(),
-                "Refresh Sony projector input and signal",
+                "Refresh Sony projector operational state",
             )
 
     async def _async_operational_refresh_loop(self) -> None:
@@ -460,16 +500,82 @@ class ProjectorManager:
             await self._async_refresh_operational()
 
     async def _async_refresh_operational(self) -> None:
-        """Query input and signal without polling power or image settings."""
-        revision = self._power_revision
-        source = await self._optional_value("input", self.state.source)
-        signal = await self._optional_value("signal", self.state.signal)
-        if self._closed or revision != self._power_revision:
+        """Publish input/signal first, then refresh enabled picture controls."""
+        async with self._operational_refresh_lock:
+            revision = self._power_revision
+            if not self._can_refresh_operational(revision):
+                return
+            source = await self._optional_value("input", self.state.source)
+            if not self._can_refresh_operational(revision):
+                return
+            signal = await self._optional_value("signal", self.state.signal)
+            if not self._can_refresh_operational(revision):
+                return
+            updated = replace(self.state, source=source, signal=signal)
+            if updated != self.state:
+                self.state = updated
+                self._notify()
+            await self._async_refresh_picture_settings(revision)
+
+    def _can_refresh_operational(self, revision: int) -> bool:
+        return (
+            not self._closed
+            and revision == self._power_revision
+            and self._power_transition_target is None
+            and not self._power_command_lock.locked()
+            and self.state.power_status == "on"
+            and self.state.available
+        )
+
+    async def _async_refresh_picture_settings(self, power_revision: int) -> None:
+        """Bound optional reads so slow settings cannot monopolize ADCP."""
+        if not self._refresh_picture_settings:
             return
-        updated = replace(self.state, source=source, signal=signal)
-        if updated != self.state:
-            self.state = updated
-            self._notify()
+        picture_revision = self._picture_revision
+        loop = asyncio.get_running_loop()
+        command = ""
+        try:
+            # Picture mode first: changing it may also change numeric settings.
+            async with asyncio.timeout(PICTURE_REFRESH_BUDGET):
+                for command in (*SELECT_COMMANDS, *NUMBER_COMMANDS, *SWITCH_COMMANDS):
+                    if (
+                        not self._can_refresh_operational(power_revision)
+                        or not self._refresh_picture_settings
+                        or picture_revision != self._picture_revision
+                    ):
+                        return
+                    if (
+                        command not in self._picture_commands
+                        or (command not in self.command_info and command not in self.state.values)
+                        or self._picture_retry_after.get(command, 0) > loop.time()
+                    ):
+                        continue
+                    try:
+                        value = await self.client.async_command(f"{command} ?")
+                    except AdcpAuthenticationError:
+                        self._auth_failed()
+                        return
+                    except AdcpError:
+                        self._picture_retry_after[command] = (
+                            loop.time() + PICTURE_REFRESH_RETRY_INTERVAL
+                        )
+                        continue
+                    if (
+                        not self._can_refresh_operational(power_revision)
+                        or not self._refresh_picture_settings
+                        or picture_revision != self._picture_revision
+                    ):
+                        return
+                    if command not in self._picture_commands:
+                        continue
+                    self._picture_retry_after.pop(command, None)
+                    if self.state.values.get(command) != value:
+                        values = {**self.state.values, command: value}
+                        self.state = replace(self.state, values=values)
+                        self._notify()
+        except TimeoutError:
+            self._picture_retry_after[command] = loop.time() + PICTURE_REFRESH_RETRY_INTERVAL
+            _LOGGER.debug("Picture refresh budget exhausted while reading %s", command)
 
     async def _optional_value(self, command: str, previous: str | None) -> str | None:
         try:
