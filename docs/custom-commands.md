@@ -5,6 +5,11 @@ Custom sensors remain read-only. The separate **Sony ADCP Projector: Send ADCP
 command** action changes settings or performs an operation on an existing projector.
 Beta 4 adds **Query ADCP command** for one-off reads and metadata discovery.
 
+Start with [Discover, control and monitor your projector](automation-examples.md)
+for copyable scripts that query `aspect`, check choices before writing, wait for
+startup, and use a custom sensor to trigger an automation. This page is the
+detailed action reference. Support is model-specific; this is not a raw terminal.
+
 ## Query current values
 
 After installing v2.4.0b4 through HACS and restarting Home Assistant:
@@ -201,6 +206,10 @@ power path, so transition monitoring is retained. The ambiguous `power` toggle
 key is rejected instead of guessing a target or risking an accidental repeat.
 
 ## Validation and scope
+
+The metadata/write restrictions below apply to **Send**, not read-only Query.
+A current-value Query requires no metadata. Query supports the three generated
+read formats above, not arbitrary options or suffix arguments.
 
 - One device and one structured operation per call. Use HA script sequences for
   multiple operations; this is not an atomic transaction or a raw terminal.

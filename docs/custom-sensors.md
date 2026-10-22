@@ -5,6 +5,11 @@ sensor entities. They belong to your existing projector and reuse its host,
 credentials, connection and refresh loop. No YAML, extra TCP sessions, fixed
 custom1/custom2 slots, or per-sensor polling tasks are needed.
 
+Use these sensors as **custom monitors** in standard HA automations. The
+[end-to-end examples](automation-examples.md) show how to query a value, discover
+choices, write a supported setting and trigger an automation when its sensor
+changes, with startup/unavailable-state guards and polling limitations.
+
 This is experimental functionality in **v2.4.0b4**, on
 `beta/2.4-custom-sensors`. Stable v2.3.0 is unchanged. Model-specific commands
 and their response formats still need hardware testing.
@@ -18,7 +23,7 @@ your configuration first. Home Assistant 2026.3 or newer is required.
 Beta 3 also adds a separate [Send ADCP command action](custom-commands.md).
 Beta 4 adds [Query ADCP command](custom-commands.md#query-current-values) for
 one-off current-value, range and command-information reads without a sensor.
-Sensors remain read-only. A successful action can immediately read back a
+Sensors remain read-only. A successful **write** action can immediately read back a
 matching enabled sensor while fully on, even when periodic refresh is Disabled;
 it does not wait for the next interval. Power/Execute/keys have different readback
 rules, explained in the action guide. The beta 2 ownership fix remains included.
@@ -156,5 +161,5 @@ on/off cycle. Report model, firmware, command, selected path/type, and observed
 behavior; do not include passwords or sensitive raw replies.
 
 To roll back cleanly, first remove custom sensors through **Configure → Custom
-sensors** while still on beta 3, then redownload stable v2.3.0 in HACS and restart.
+sensors** while still on the 2.4 beta, then redownload stable v2.3.0 in HACS and restart.
 Do not downgrade to beta 1: it contains the device-ownership regression.

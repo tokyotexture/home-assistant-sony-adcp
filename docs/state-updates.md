@@ -11,6 +11,11 @@ is rejected during fast power monitoring, with a 30-second whole-action deadline
 Power timings are unchanged. Beta 3 adds immediate matching-entity readback after
 acknowledged readable custom writes; it does not add another polling loop.
 
+For copyable scripts and a state-change automation, see [Discover, control and
+monitor your projector](automation-examples.md). It distinguishes one-off query
+responses from custom sensor monitoring, including startup waits and unavailable
+states. Custom sensor changes are detected through scheduled ADCP reads, not SDAP.
+
 The integration uses one shared asynchronous ADCP client. Entities display its
 cached values; they do not each run their own polling loop. SDAP announcements
 carry power/discovery information, **not** input, signal, picture settings, or
