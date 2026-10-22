@@ -25,6 +25,7 @@ class SubentryLifecycleTest(unittest.IsolatedAsyncioTestCase):
         exceptions = ModuleType("homeassistant.exceptions")
         exceptions.ConfigEntryAuthFailed = exceptions.ConfigEntryNotReady = RuntimeError
         helpers = ModuleType("homeassistant.helpers")
+        helpers.config_validation = SimpleNamespace(config_entry_only_config_schema=lambda _: {})
         helpers.device_registry = ModuleType("homeassistant.helpers.device_registry")
         helpers.entity_registry = ModuleType("homeassistant.helpers.entity_registry")
         helpers.entity_registry.async_get = Mock()

@@ -26,7 +26,7 @@ class PictureClient:
         self.release = asyncio.Event()
         self.cancelled = False
 
-    async def async_command(self, command):
+    async def async_command(self, command, *, retry=True):
         self.commands.append(command)
         if command == self.block_command:
             self.started.set()
