@@ -1,8 +1,10 @@
 # How values update
 
-This reference describes **v2.4.0b2**, including the stable v2.3.0 behavior plus
+This reference describes **v2.4.0b3**, including the stable v2.3.0 behavior plus
 experimental [custom ADCP sensors](custom-sensors.md). Stable v2.3.0 does not
-include custom sensors. Power timings and existing entity update rules are unchanged.
+include custom sensors or the [Send ADCP command action](custom-commands.md).
+Power timings are unchanged. Beta 3 adds immediate matching-entity readback after
+acknowledged readable custom writes; it does not add another polling loop.
 
 The integration uses one shared asynchronous ADCP client. Entities display its
 cached values; they do not each run their own polling loop. SDAP announcements
@@ -85,7 +87,7 @@ For the table:
 | Warnings diagnostic sensor | `warning ?` | Same setup-only behavior as Errors. Not part of either periodic loop or shutdown refresh. |
 | Operation hours diagnostic sensor | `timer ?` → `operation` | One shared counter read at setup and on a transition from a known non-standby state into `standby`/`saving_standby`. Also retry on transitions to `on` while no counters are known, unless the command is known unsupported. No periodic refresh. |
 | Light-source hours diagnostic sensor | `timer ?` → `light_src` | Same shared read and triggers as Operation hours. Only returned counters get sensors. |
-| User-named custom sensor (2.4 beta) | Configured command name + ` ?` | Configured refresh only, when enabled, available and fully on, outside fast power monitoring. Independent of Include picture settings; Disabled interval stops it. Deduplicated per command/cycle, with a separate two-second batch budget, rotation and 60-second query-failure backoff. Unavailable until a valid read and while off/transitioning. Power changes clear caches. JSON conversion errors affect only that sensor. See [full rules and configuration](custom-sensors.md). |
+| User-named custom sensor (2.4 beta) | Configured command name + ` ?` | Configured refresh when enabled, available and fully on, outside fast power monitoring. Beta 3 also reads a matching enabled sensor once after an acknowledged readable custom action or matching built-in setting write, while fully on, even when periodic refresh is Disabled. Independent of Include picture settings. Deduplicated per command/cycle, with a separate two-second periodic batch budget, rotation and 60-second query-failure backoff. Unavailable until a valid read and while off/transitioning. Power changes clear caches. JSON conversion errors affect only that sensor. See [full rules and configuration](custom-sensors.md) and [custom action readback](custom-commands.md#acknowledgements-readback-and-failures). |
 
 Numeric entities are created only when the projector reports a minimum and
 maximum for that command. Picture mode and Video mute are offered but may be
@@ -391,6 +393,8 @@ It does **not** query the projector or make stale values fresh.
 
 The 2.4 beta adds named, read-only [custom-command sensors](custom-sensors.md),
 not fixed custom1/custom2 slots. They use the configured refresh loop, never
-the power monitor; no custom write actions or templates are provided.
+the power monitor. Beta 3 adds a separate [structured write action](custom-commands.md)
+and immediate matching-entity readback after successful readable writes. No raw
+protocol strings or executable response templates are provided.
 
 [Back to the README](../README.md#state-updates)
