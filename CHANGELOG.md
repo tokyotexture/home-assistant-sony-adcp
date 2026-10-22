@@ -2,6 +2,19 @@
 
 All notable changes to Sony ADCP Projector are documented here.
 
+## 2.2.4b1 (beta)
+
+- Fixed ADCP reply desynchronization after task cancellation, which could expose
+  an input, signal, or command acknowledgement as the projector's power state
+  ([#14](https://github.com/tokyotexture/home-assistant-sony-adcp/issues/14)).
+- Interrupted exchanges now close the connection before another command can
+  acquire it, including cancellation during greeting and authentication.
+- Added TCP regression tests for interrupted replies and the SDAP-triggered
+  cancellation path. Cancellation while waiting for the command lock continues
+  to leave the active exchange alone.
+- This prerelease needs testing on the affected VPL-XW5000ES. The separately
+  reported stale SDAP announcements have not been independently confirmed.
+
 ## 2.2.3
 
 - Prevented long-running operational polling from blocking Home Assistant
