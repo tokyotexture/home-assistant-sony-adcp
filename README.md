@@ -80,15 +80,16 @@ projector is fully on, at a configurable interval.
   Home Assistant
 
 The integration was developed and tested with a Sony VPL-VW535. Sony models
-vary, so optional entities are created only when the projector reports support
-for the corresponding command.
+vary: numeric controls and hour sensors are created from supported ranges and
+valid counters. Picture mode and video mute may be unavailable on models that
+do not support them.
 
 ### Tested models
 
 | Model | Firmware | Notes |
 | --- | --- | --- |
 | VPL-VW535 | | Development model |
-| VPL-XW5000ES (reports as VPL-XW5000) | 1.101 | All entities work |
+| VPL-XW5000ES (reports as VPL-XW5000) | 1.101 | Previously reported working; new 2.3 beta features still need hardware validation |
 
 ## Installation
 
@@ -152,57 +153,60 @@ administrator password automatically.
 
 ## Entities
 
-Entity availability depends on the commands supported by the projector.
+Entity availability depends on the commands supported by the projector. The
+[value-by-value refresh reference](docs/state-updates.md#entity-and-value-reference)
+explains exactly when each entity is read and when it can become stale.
 
 | Entity | Purpose |
 | --- | --- |
 | Projector media player | Power, current input, and input selection |
 | Power status sensor | Standby, startup, on, cooling, or saving state |
 | Signal sensor | Current input signal or format |
-| Errors sensor | Projector-reported errors |
-| Warnings sensor | Projector-reported warnings |
+| Errors sensor | Error snapshot, read at setup only if fully on; not continuously monitored |
+| Warnings sensor | Warning snapshot, read at setup only if fully on; not continuously monitored |
 | Operation hours sensor | Projector-reported operation counter, in hours (when supported) |
 | Light-source hours sensor | Projector-reported light-source counter, in hours (when supported) |
 | Video mute switch | Blank or restore the projected image |
 | Picture mode select | Select a supported picture mode |
-| Numeric controls | Brightness, contrast, sharpness, and other reported ranges |
+| Brightness number | Reported brightness value and range |
+| Contrast number | Reported contrast value and range |
+| Sharpness number | Reported sharpness value and range |
+| Light output number | Reported light-output value and range |
+| Reality Creation resolution number | Reported resolution-enhancement value and range |
+| Reality Creation noise filtering number | Reported noise-filtering value and range |
 
 ## State updates
 
-| State | Update method |
+The configurable interval refreshes a **subset of values**, not every entity.
+Power status is handled separately. See the [complete refresh reference](docs/state-updates.md)
+for every entity, attribute, query, option, and known freshness limitation.
+
+| Values | When they update |
 | --- | --- |
-| Power | SDAP announcements plus 60-second ADCP reconciliation |
-| Home Assistant power commands | Immediate ADCP check, then approximately every second; up to 60 seconds for startup or 5 minutes for shutdown |
-| Input and signal | ADCP refresh while the projector is fully on |
-| Other commands sent by Home Assistant | Refreshed immediately after completion |
-| Picture mode, video mute, and image controls | Same periodic interval when Include picture settings is on; also setup and Home Assistant commands |
-| Operation and light-source hours | One shared query at setup and when power reaches standby; no periodic refresh |
-| Firmware | Read once at integration setup/reload for the device's firmware field |
+| Power status and media-player on/off state | SDAP announcements; independent ADCP check about every 60 seconds; fast temporary checks after Home Assistant power commands |
+| Current input and signal | While fully on: configurable refresh, plus setup, power-watchdog checks, and refreshes after changed power/address announcements or Home Assistant input selection |
+| Picture mode, video mute, brightness, contrast, sharpness, light output, Reality Creation resolution and noise filtering | Initial read when each enabled control is added; readback after its own Home Assistant command; configurable refresh when Include picture settings is on |
+| Errors and warnings | Setup/reload only, and only if the projector is fully on then |
+| Operation and light-source hours | Setup and after confirmed shutdown to standby; retry on transitions to on while no counters are known, unless unsupported |
+| Firmware and identity | Setup/reload; not periodically polled |
 
-Operational state defaults to a 10-second refresh interval while the projector
-is fully on. To change it, open the integration and select **Configure**.
-Available choices are Disabled, 5, 10, or 30 seconds. No operational refresh
-runs during startup, cooling, standby, or fast power-transition monitoring.
+In **Configure**, **Refresh interval** defaults to **10 seconds**, with choices
+Disabled, 5, 10, or 30 seconds. **Include picture settings** defaults to on,
+including existing installations. Both changes apply without reloading. The
+configurable loop runs only while the projector is available and fully `on`,
+and pauses during fast power monitoring.
 
-**Include picture settings** is on by default (including existing installations)
-and applies immediately without reloading. It refreshes picture mode, brightness,
-contrast, sharpness, light output, Reality Creation resolution/noise filtering,
-and video mute, but only for supported controls whose entities are enabled.
-Changes made with the projector's remote or menus update the existing entities;
-no duplicate sensors are created. Turning the option off restores input/signal-only
-periodic refresh. Selecting Disabled stops periodic picture checks too, without
-disabling SDAP or power monitoring. Direct Home Assistant controls still read
-their own value after a command.
+**Disabled stops this configurable loop, not all polling.** The independent
+power watchdog still reads input and signal when it finds the projector on.
+Setup, changed power/address announcements, and direct Home Assistant controls
+can also trigger reads. Turning only Include picture settings off leaves the
+configured input/signal refresh running.
 
-Input and signal are published first, followed by picture mode and the other
-controls. Picture reads share the existing serialized connection and have a
-two-second budget per cycle, including network/lock waits. A failed or timed-out
-setting retains its last known value and is retried no sooner than 60 seconds
-later; it does not make the entire projector unavailable. Successful settings
-still update, and only changed values are published. If a power change or option
-change happens during a picture read, that stale result is discarded. This
-bounded refresh may take more than one cycle to cover every setting on a slow
-projector. Custom-command sensors are not included in this beta.
+Only supported picture controls with enabled entities take part in periodic
+picture refresh. Their reads share a two-second budget per cycle and failed
+settings back off for at least 60 seconds, so the selected interval is not a
+guaranteed update deadline. See [refresh timing and failures](docs/state-updates.md#refresh-timing-and-failures).
+Custom-command sensors are not included in this beta.
 
 ### Power transitions (2.3 beta)
 
@@ -255,11 +259,15 @@ instead of inventing zero or marking the whole projector unavailable.
 Unsupported commands are optional and do not prevent setup. A projector that
 returns `err_cmd` for `timer ?` is not queried again until the integration reloads.
 If the initial read is temporarily inactive or unavailable and no counters are
-known, the integration also tries once when power next reaches on. Shutdown reads
+known, the integration also retries on transitions to on until counters are known
+or the command is confirmed unsupported. Shutdown reads
 run in the background so a slow counter reply does not delay the standby state.
 The counters are reported by the projector, not calculated by Home Assistant;
 the integration never resets them. Other niche commands from issue #12 are not
 added by this beta.
+
+For the full entity list, media-player attributes, diagnostic limitations, and
+exact read triggers, see [How values update](docs/state-updates.md).
 
 ### Testing prereleases
 
