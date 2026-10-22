@@ -20,6 +20,9 @@ All notable changes to Sony ADCP Projector are documented here.
 - Add real Home Assistant device/entity registry tests on the minimum supported
   and current versions, including reproduction of the beta 1 ownership bug,
   add/edit/remove preservation and safe, idempotent migration.
+- Fall back to the TV media-player class on older supported Home Assistant
+  versions that do not yet expose a projector class, preventing a platform import
+  failure. Newer versions retain the projector class.
 - Power polling, refresh budgets, query backoff and all other beta 1 functionality
   are unchanged. Stable v2.3.0 remains the latest stable release.
 
