@@ -44,10 +44,12 @@ Sony ADCP Projector represents a projector as a native Home Assistant
 `media_player`: power it on or off, select an input, see its signal format, and
 build automations around real device state.
 
-Power state is delivered immediately by Sony's local SDAP announcements and
-independently reconciled through ADCP every 60 seconds in case announcements
-are missed or stale. The active input and signal are refreshed while the
-projector is on, at a configurable interval.
+Power state follows Sony's local SDAP announcements and is independently
+reconciled through ADCP every 60 seconds in case announcements are missed or
+stale. After a Home Assistant power command, a short-lived ADCP monitor checks
+power approximately every second until the requested state is reached, for at
+most 60 seconds. The active input and signal are refreshed while the projector
+is on, at a configurable interval.
 
 ## Features
 
@@ -56,8 +58,8 @@ projector is on, at a configurable interval.
 - Model and serial-number identification
 - Automatic detection of password authentication
 - Fully asynchronous ADCP client with reconnect handling
-- Push-driven power, startup, cooling, and standby state with periodic ADCP
-  reconciliation
+- Push-driven power with fast, bounded monitoring of Home Assistant power
+  commands and periodic ADCP reconciliation
 - Input selection and current-source reporting
 - Signal-format sensor suitable for automations
 - Video mute, picture mode, and supported numeric image controls
@@ -165,15 +167,53 @@ Entity availability depends on the commands supported by the projector.
 
 | State | Update method |
 | --- | --- |
-| Power | Immediate local SDAP announcements plus 60-second ADCP reconciliation |
+| Power | SDAP announcements plus 60-second ADCP reconciliation |
+| Home Assistant power commands | Immediate ADCP check, then approximately every second for up to 60 seconds |
 | Input and signal | ADCP refresh while the projector is on |
-| Commands sent by Home Assistant | Refreshed immediately after completion |
+| Other commands sent by Home Assistant | Refreshed immediately after completion |
 | Picture mode, video mute, and image controls | Setup and Home Assistant commands only |
 
 Input and signal default to a 10-second refresh interval while the projector is
 on. To change it, open the integration and select **Configure**. Available
 choices are Disabled, 5, 10, or 30 seconds. No operational refresh runs while
 the projector is off.
+
+### Power transitions (2.3 beta)
+
+A successful Home Assistant turn-on or turn-off command starts one temporary
+async monitor, reusing the existing ADCP connection. It reads only
+`power_status ?`: immediately, then one second after each reply. It stops when
+turn-on reaches `on`, turn-off reaches `standby` or `saving_standby`, or the
+60-second deadline expires. Network delays count toward that deadline. A new
+successful power command replaces the previous monitor; power commands are
+never automatically resent.
+
+During this window, confirmed ADCP readings take priority over potentially
+stale SDAP power announcements. Normal input/signal polling pauses, but DHCP
+address changes are still handled. Normal SDAP updates and periodic refreshes
+resume afterward. Power changes made with a remote control do not start fast
+polling.
+
+The media player's `sony_power_status` attribute and power-status sensor show
+confirmed projector state, including startup and cooling. Its `power_transition`
+attribute is `on` or `off` while monitoring that requested endpoint, and null
+otherwise. A cleared transition attribute alone does not prove success: a
+timeout or authentication failure also clears it. Use confirmed power state
+for completion automations. Responses are not optimistic, and startup/cooling
+continue to appear as an on media player until standby is confirmed.
+
+### Testing prereleases
+
+The 2.3 beta is developed on `beta/2.3-power-transitions`; stable releases remain
+on `master`. In HACS, enable prerelease versions for this repository if needed,
+then use **Redownload** to select `v2.3.0b1` and restart Home Assistant. No
+integration reconfiguration is required. To roll back, redownload `v2.2.4` and
+restart again.
+
+Please test normal startup and shutdown, check that startup/cooling appear
+promptly, and verify the final on/standby state. Respect the projector's normal
+cooldown and avoid rapid power cycling. This beta has automated regression
+coverage but still needs real-projector validation.
 
 ## DHCP address changes
 
