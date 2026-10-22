@@ -2,7 +2,7 @@
 
 All notable changes to Sony ADCP Projector are documented here.
 
-## 2.2.4b1 (beta)
+## 2.2.4
 
 - Fixed ADCP reply desynchronization after task cancellation, which could expose
   an input, signal, or command acknowledgement as the projector's power state
@@ -12,8 +12,11 @@ All notable changes to Sony ADCP Projector are documented here.
 - Added TCP regression tests for interrupted replies and the SDAP-triggered
   cancellation path. Cancellation while waiting for the command lock continues
   to leave the active exchange alone.
-- This prerelease needs testing on the affected VPL-XW5000ES. The separately
-  reported stale SDAP announcements have not been independently confirmed.
+- Confirmed by the reporter on a VPL-XW5000ES (firmware 1.101) using the
+  2.2.4b1 prerelease. Power-cycle testing no longer produced other commands'
+  replies or a false on state during cooling.
+- Known issue: a delayed standby-to-startup update can still occur after
+  turn-on. This separate status-latency issue is not fixed in this release.
 
 ## 2.2.3
 
