@@ -75,6 +75,13 @@ projector is fully on, at a configurable interval.
 - Bundled light/dark-compatible integration branding
 - No cloud service or external Python dependency
 
+### Beta 2 upgrade
+
+Beta 2 fixes custom sensors making the projector's power control disappear.
+Manage them through **Configure → Custom sensors**, not the top-right + button.
+Remaining beta 1 sensor settings migrate automatically on restart. Do not delete
+and re-add the projector integration. See [upgrade details](docs/custom-sensors.md#upgrading-from-beta-1).
+
 ## Requirements
 
 - Home Assistant 2026.3 or newer
@@ -196,7 +203,7 @@ for every entity, attribute, query, option, and known freshness limitation.
 | Firmware and identity | Setup/reload; not periodically polled |
 | Named custom sensors (2.4 beta) | Configurable refresh only while fully on and enabled; independent of Include picture settings. Separate two-second batch budget and 60-second query-error backoff; unavailable off or during transitions. |
 
-In **Configure**, **Refresh interval** defaults to **10 seconds**, with choices
+In **Configure → Refresh settings**, **Refresh interval** defaults to **10 seconds**, with choices
 Disabled, 5, 10, or 30 seconds. **Include picture settings** defaults to on,
 including existing installations. Both changes apply without reloading. The
 configurable loop runs only while the projector is available and fully `on`,
@@ -213,7 +220,7 @@ picture refresh. Their reads share a two-second budget per cycle and failed
 settings back off for at least 60 seconds, so the selected interval is not a
 guaranteed update deadline. See [refresh timing and failures](docs/state-updates.md#refresh-timing-and-failures).
 Custom sensors add read-only queries to that same schedule, with a separate
-two-second budget. Add them under your projector's integration entry; see
+two-second budget. Use **Configure → Custom sensors** on the existing projector; see
 [custom-sensor setup, refresh details and testing](docs/custom-sensors.md).
 
 ### Power transitions
@@ -289,10 +296,10 @@ exact read triggers, see [How values update](docs/state-updates.md).
 
 ### Testing 2.4 and stable 2.3
 
-This branch is **v2.4.0b1**, an opt-in prerelease for custom-sensor development.
-In HACS, enable prerelease versions, Redownload **v2.4.0b1**, then restart Home
+This branch is **v2.4.0b2**, an opt-in prerelease for custom-sensor development.
+In HACS, enable prerelease versions, Redownload **v2.4.0b2**, then restart Home
 Assistant. See the [beta guide](docs/custom-sensors.md) for setup and rollback.
-Before downgrading, delete custom sensor subentries while still on the beta.
+Before downgrading, remove custom sensors through Configure while still on the beta.
 
 **v2.3.0 is the stable release**, incorporating the functionality tested in the
 2.3 betas. Update through HACS and restart Home Assistant. If needed, use
@@ -389,8 +396,15 @@ Lint the integration with Ruff:
 ruff check .
 ```
 
-CI also runs HACS and Home Assistant Hassfest validation. Automated checks do
-not replace testing model-specific custom commands on a real projector.
+CI also runs HACS, Home Assistant Hassfest, and real device/entity registry tests
+on Home Assistant 2026.3.0 and 2026.10.2. The registry tests run separately from
+the offline harness in Python 3.14 environments with Home Assistant installed:
+
+```bash
+python -m unittest discover -s tests/native -v
+```
+
+Automated checks do not replace testing model-specific custom commands on a real projector.
 
 Pull requests and projector compatibility reports are welcome. For bugs,
 download diagnostics from the integration page and attach the redacted file to

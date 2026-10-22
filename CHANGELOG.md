@@ -2,6 +2,27 @@
 
 All notable changes to Sony ADCP Projector are documented here.
 
+## 2.4.0b2 (prerelease)
+
+- Fix custom sensors making the projector's media-player/power control disappear.
+  Keep all sensors and controls owned by the existing projector configuration;
+  stop assigning the shared physical device to individual sensor subentries.
+- Move add/edit/remove into **Configure → Custom sensors** with a removal
+  confirmation. Move refresh options into **Configure → Refresh settings**.
+  Remove the separate subentry action (which could appear as an unlabeled +).
+- Automatically migrate remaining beta 1 sensor settings and IDs on restart.
+  Reparent entity registrations before devices, then remove obsolete subentries;
+  preserve existing registrations, names and options where still present. Support
+  both legacy shared-device and newer single-owner registry APIs. Already-deleted
+  beta 1 registry customizations cannot be reconstructed.
+- Remove only intentionally deleted custom sensor registrations on reload,
+  never the projector media player or other built-in controls.
+- Add real Home Assistant device/entity registry tests on the minimum supported
+  and current versions, including reproduction of the beta 1 ownership bug,
+  add/edit/remove preservation and safe, idempotent migration.
+- Power polling, refresh budgets, query backoff and all other beta 1 functionality
+  are unchanged. Stable v2.3.0 remains the latest stable release.
+
 ## 2.4.0b1 (prerelease)
 
 - Added named, read-only custom ADCP sensors as Home Assistant configuration
