@@ -57,6 +57,9 @@ projector is fully on, at a configurable interval.
 > **2.4 development beta:** this branch adds named, read-only custom ADCP sensors
 > configured in Home Assistant. Stable v2.3.0 is unchanged.
 > See the [custom-sensor setup, refresh rules and testing guide](docs/custom-sensors.md).
+> Beta 3 also adds an admin-only [Send ADCP command action](docs/custom-commands.md),
+> with structured set/relative/reset/execute operations and remote keys. Its guide
+> includes actual Sony examples, model caveats, acknowledgement and retry behavior.
 
 - Native projector-class `media_player`
 - Automatic discovery through Sony SDAP advertisements
@@ -201,7 +204,7 @@ for every entity, attribute, query, option, and known freshness limitation.
 | Errors and warnings | Setup/reload only, and only if the projector is fully on then |
 | Operation and light-source hours | Setup and after confirmed shutdown to standby; retry on transitions to on while no counters are known, unless unsupported |
 | Firmware and identity | Setup/reload; not periodically polled |
-| Named custom sensors (2.4 beta) | Configurable refresh only while fully on and enabled; independent of Include picture settings. Separate two-second batch budget and 60-second query-error backoff; unavailable off or during transitions. |
+| Named custom sensors (2.4 beta) | Configurable refresh while fully on and enabled; independent of Include picture settings. Beta 3 also reads back matching enabled sensors immediately after acknowledged readable custom writes or matching built-in setting commands. Separate two-second periodic batch budget and 60-second query-error backoff; unavailable off or during transitions. |
 
 In **Configure → Refresh settings**, **Refresh interval** defaults to **10 seconds**, with choices
 Disabled, 5, 10, or 30 seconds. **Include picture settings** defaults to on,
@@ -296,9 +299,12 @@ exact read triggers, see [How values update](docs/state-updates.md).
 
 ### Testing 2.4 and stable 2.3
 
-This branch is **v2.4.0b2**, an opt-in prerelease for custom-sensor development.
-In HACS, enable prerelease versions, Redownload **v2.4.0b2**, then restart Home
+This branch is **v2.4.0b3**, an opt-in prerelease for custom sensors and command actions.
+In HACS, enable prerelease versions, Redownload **v2.4.0b3**, then restart Home
 Assistant. See the [beta guide](docs/custom-sensors.md) for setup and rollback.
+The [command-action guide](docs/custom-commands.md) explains the new action, real
+Sony command examples, validation, readback and non-replayed writes. Power control
+ownership and automatic migration from beta 1 remain fixed as in beta 2.
 Before downgrading, remove custom sensors through Configure while still on the beta.
 
 **v2.3.0 is the stable release**, incorporating the functionality tested in the

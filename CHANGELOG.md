@@ -2,6 +2,29 @@
 
 All notable changes to Sony ADCP Projector are documented here.
 
+## 2.4.0b3 (prerelease)
+
+- Add the admin-only `sony_adcp.send_command` action for existing projector
+  devices. Support structured Set, Relative, Reset and Execute operations plus
+  single remote keys, with an optional acknowledgement/readback response.
+- Require recognized menu-command metadata, validate exact-case choices,
+  numeric ranges and steps, and reject raw command lines and advanced/network
+  writes. Cache successful metadata only. Explicit power and power keys retain
+  the existing fast monitor; reject ambiguous power toggles and non-power writes
+  during monitored transitions. Cancel active custom actions on unload.
+- Read back matching enabled custom sensors and picture controls immediately
+  after acknowledged readable writes, even with periodic refresh disabled.
+  Keep acknowledgements distinct from completion and readback errors.
+- Never automatically replay writes after connection failures, including
+  built-in controls; reads retain reconnect/retry behavior. Close cancelled or
+  uncertain streams and surface authentication failures through reauth.
+- Document actual Sony command names, exact messages, model-specific choices,
+  setting reset versus execution, and non-destructive test suggestions in
+  `docs/custom-commands.md`, citing the official Sony manual and printed pages.
+- Add offline action/transport regressions and real HA service registration,
+  permission, routing, response and deadline tests. Retain the beta 2 ownership
+  fix, automatic beta 1 migration and stable v2.3.0 release unchanged.
+
 ## 2.4.0b2 (prerelease)
 
 - Fix custom sensors making the projector's media-player/power control disappear.
