@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 CUSTOM_SENSOR = "custom_sensor"
+CONF_CUSTOM_SENSORS = "custom_sensors"
 CUSTOM_REFRESH_BUDGET = 2.0
 CUSTOM_RETRY_INTERVAL = 60
 MAX_CUSTOM_SENSORS = 32

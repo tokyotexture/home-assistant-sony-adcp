@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
+from uuid import uuid4
 
 import voluptuous as vol
 from homeassistant.config_entries import (
@@ -11,9 +12,7 @@ from homeassistant.config_entries import (
     ConfigEntryState,
     ConfigFlow,
     ConfigFlowResult,
-    ConfigSubentryFlow,
     OptionsFlow,
-    SubentryFlowResult,
 )
 from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PASSWORD, CONF_PORT
 from homeassistant.core import callback
@@ -38,7 +37,7 @@ from .const import (
     OPERATIONAL_REFRESH_INTERVALS,
 )
 from .custom_commands import (
-    CUSTOM_SENSOR,
+    CONF_CUSTOM_SENSORS,
     MAX_CUSTOM_SENSORS,
     CustomSensorValidationError,
     validate_sensor_config,
@@ -58,14 +57,7 @@ class SonyAdcpConfigFlow(ConfigFlow, domain=DOMAIN):
     """Discover and configure a Sony ADCP projector."""
 
     VERSION = 2
-
-    @classmethod
-    @callback
-    def async_get_supported_subentry_types(
-        cls, config_entry: ConfigEntry
-    ) -> dict[str, type[ConfigSubentryFlow]]:
-        """Offer named custom sensors under each existing projector."""
-        return {CUSTOM_SENSOR: SonyAdcpCustomSensorFlow}
+    MINOR_VERSION = 2
 
     @staticmethod
     @callback
@@ -83,9 +75,7 @@ class SonyAdcpConfigFlow(ConfigFlow, domain=DOMAIN):
         self._auth_mode: AuthenticationMode | None = None
         self._discovery_task: asyncio.Task[list[DiscoveredProjector]] | None = None
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Start discovery when the flow is opened by the user."""
         return await self.async_step_discovery()
 
@@ -113,9 +103,7 @@ class SonyAdcpConfigFlow(ConfigFlow, domain=DOMAIN):
             description_placeholders={"seconds": str(int(DISCOVERY_TIMEOUT))},
         )
 
-    async def async_step_select(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_select(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Select a discovered projector or use manual setup."""
         if user_input is not None:
             selected = user_input[CONF_DISCOVERED_HOST]
@@ -135,14 +123,10 @@ class SonyAdcpConfigFlow(ConfigFlow, domain=DOMAIN):
         choices["manual"] = "Enter address manually"
         return self.async_show_form(
             step_id="select",
-            data_schema=vol.Schema(
-                {vol.Required(CONF_DISCOVERED_HOST): vol.In(choices)}
-            ),
+            data_schema=vol.Schema({vol.Required(CONF_DISCOVERED_HOST): vol.In(choices)}),
         )
 
-    async def async_step_manual(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_manual(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Configure a projector not received over SDAP."""
         errors: dict[str, str] = {}
         if user_input is not None:
@@ -173,9 +157,7 @@ class SonyAdcpConfigFlow(ConfigFlow, domain=DOMAIN):
             return await self.async_step_auth()
         return await self._async_finish(password=None)
 
-    async def async_step_auth(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_auth(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Request a password only when the projector sends a challenge."""
         errors: dict[str, str] = {}
         if user_input is not None:
@@ -211,9 +193,7 @@ class SonyAdcpConfigFlow(ConfigFlow, domain=DOMAIN):
             },
         )
 
-    async def async_step_reauth(
-        self, entry_data: dict[str, Any]
-    ) -> ConfigFlowResult:
+    async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
         """Start reauthentication after the projector rejects credentials."""
         entry = self._get_reauth_entry()
         self._host = entry.data[CONF_HOST]
@@ -285,9 +265,7 @@ class SonyAdcpConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="reconfigure",
             data_schema=vol.Schema(
                 {
-                    vol.Required(
-                        CONF_HOST, default=entry.data[CONF_HOST]
-                    ): cv.string,
+                    vol.Required(CONF_HOST, default=entry.data[CONF_HOST]): cv.string,
                     vol.Optional(
                         CONF_PORT,
                         default=entry.data.get(CONF_PORT, DEFAULT_PORT),
@@ -302,29 +280,91 @@ class SonyAdcpConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
 
-class SonyAdcpCustomSensorFlow(ConfigSubentryFlow):
-    """Add or edit a read-only sensor without probing a sleeping projector."""
+class SonyAdcpOptionsFlow(OptionsFlow):
+    """Manage refresh settings and custom sensors on the parent projector."""
 
-    async def async_step_user(
+    def __init__(self) -> None:
+        self._sensor_id: str | None = None
+
+    def _sensors(self) -> list[dict[str, str]]:
+        return [dict(sensor) for sensor in self.config_entry.options.get(CONF_CUSTOM_SENSORS, [])]
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        return self.async_show_menu(step_id="init", menu_options=["refresh", "custom_sensors"])
+
+    async def async_step_custom_sensors(
         self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
-        return await self._async_sensor_form("user", user_input)
+    ) -> ConfigFlowResult:
+        choices = ["add_sensor"]
+        if self._sensors():
+            choices.extend(["edit_sensor", "remove_sensor"])
+        return self.async_show_menu(step_id="custom_sensors", menu_options=choices)
 
-    async def async_step_reconfigure(
+    async def async_step_add_sensor(
         self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
-        return await self._async_sensor_form("reconfigure", user_input)
-
-    async def _async_sensor_form(
-        self, step_id: str, user_input: dict[str, Any] | None
-    ) -> SubentryFlowResult:
-        entry = self._get_entry()
-        editing = step_id == "reconfigure"
-        if not editing and sum(
-            subentry.subentry_type == CUSTOM_SENSOR for subentry in entry.subentries.values()
-        ) >= MAX_CUSTOM_SENSORS:
+    ) -> ConfigFlowResult:
+        if len(self._sensors()) >= MAX_CUSTOM_SENSORS:
             return self.async_abort(reason="too_many_sensors")
-        current = dict(self._get_reconfigure_subentry().data) if editing else {}
+        self._sensor_id = None
+        return await self.async_step_sensor(user_input)
+
+    async def async_step_edit_sensor(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        if user_input is not None:
+            self._sensor_id = user_input["sensor_id"]
+            return await self.async_step_sensor()
+        return self._sensor_picker("edit_sensor")
+
+    async def async_step_remove_sensor(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        if user_input is not None:
+            self._sensor_id = user_input["sensor_id"]
+            return await self.async_step_confirm_remove()
+        return self._sensor_picker("remove_sensor")
+
+    def _sensor_picker(self, step_id: str) -> ConfigFlowResult:
+        sensors = self._sensors()
+        if not sensors:
+            return self.async_abort(reason="sensor_not_found")
+        return self.async_show_form(
+            step_id=step_id,
+            data_schema=vol.Schema(
+                {
+                    vol.Required("sensor_id"): SelectSelector(
+                        SelectSelectorConfig(
+                            options=[
+                                {"value": sensor["id"], "label": sensor["name"]}
+                                for sensor in sensors
+                            ],
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                }
+            ),
+        )
+
+    async def async_step_confirm_remove(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        sensors = self._sensors()
+        sensor = next((item for item in sensors if item["id"] == self._sensor_id), None)
+        if sensor is None:
+            return self.async_abort(reason="sensor_not_found")
+        if user_input is not None:
+            return self._save_sensors([item for item in sensors if item["id"] != self._sensor_id])
+        return self.async_show_form(
+            step_id="confirm_remove",
+            data_schema=vol.Schema({}),
+            description_placeholders={"name": sensor["name"]},
+        )
+
+    async def async_step_sensor(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        sensors = self._sensors()
+        current = next((sensor for sensor in sensors if sensor["id"] == self._sensor_id), {})
+        if self._sensor_id is not None and not current:
+            return self.async_abort(reason="sensor_not_found")
         errors: dict[str, str] = {}
         if user_input is not None:
             current = user_input
@@ -333,27 +373,36 @@ class SonyAdcpCustomSensorFlow(ConfigSubentryFlow):
             except CustomSensorValidationError as err:
                 errors[err.field] = err.reason
             else:
-                if editing:
-                    # The parent's subentry-only update listener handles reloads.
-                    return self.async_update_and_abort(
-                        entry, self._get_reconfigure_subentry(), title=data["name"], data=data
-                    )
-                return self.async_create_entry(title=data["name"], data=data)
+                if self._sensor_id is None:
+                    if len(sensors) >= MAX_CUSTOM_SENSORS:
+                        return self.async_abort(reason="too_many_sensors")
+                    sensors.append({"id": uuid4().hex, **data})
+                else:
+                    sensors = [
+                        {"id": self._sensor_id, **data}
+                        if sensor["id"] == self._sensor_id
+                        else sensor
+                        for sensor in sensors
+                    ]
+                return self._save_sensors(sensors)
         return self.async_show_form(
-            step_id=step_id,
-            data_schema=vol.Schema({
-                vol.Required(CONF_NAME, default=current.get(CONF_NAME, "")): cv.string,
-                vol.Required("command", default=current.get("command", "")): cv.string,
-                vol.Required(
-                    "value_type", default=current.get("value_type", "text")
-                ): SelectSelector(
-                    SelectSelectorConfig(
-                        options=["text", "number"], mode=SelectSelectorMode.DROPDOWN
-                    )
-                ),
-                vol.Optional("json_field", default=current.get("json_field", "")): cv.string,
-                vol.Optional("unit", default=current.get("unit", "")): cv.string,
-            }),
+            step_id="sensor",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_NAME, default=current.get(CONF_NAME, "")): cv.string,
+                    vol.Required("command", default=current.get("command", "")): cv.string,
+                    vol.Required(
+                        "value_type", default=current.get("value_type", "text")
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=["text", "number"],
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                    vol.Optional("json_field", default=current.get("json_field", "")): cv.string,
+                    vol.Optional("unit", default=current.get("unit", "")): cv.string,
+                }
+            ),
             errors=errors,
             description_placeholders={
                 "documentation_url": (
@@ -363,11 +412,14 @@ class SonyAdcpCustomSensorFlow(ConfigSubentryFlow):
             },
         )
 
+    def _save_sensors(self, sensors: list[dict[str, str]]) -> ConfigFlowResult:
+        # The options update listener reloads only when this list changes.
+        return self.async_create_entry(
+            title="",
+            data={**self.config_entry.options, CONF_CUSTOM_SENSORS: sensors},
+        )
 
-class SonyAdcpOptionsFlow(OptionsFlow):
-    """Configure runtime behavior for a Sony projector."""
-
-    async def async_step_init(
+    async def async_step_refresh(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Configure refreshes for automation-relevant operational state."""
@@ -399,7 +451,7 @@ class SonyAdcpOptionsFlow(OptionsFlow):
             )
         )
         return self.async_show_form(
-            step_id="init",
+            step_id="refresh",
             data_schema=vol.Schema(
                 {
                     vol.Required(
@@ -407,9 +459,7 @@ class SonyAdcpOptionsFlow(OptionsFlow):
                         default=str(current),
                     ): SelectSelector(
                         SelectSelectorConfig(
-                            options=[
-                                str(value) for value in OPERATIONAL_REFRESH_INTERVALS
-                            ],
+                            options=[str(value) for value in OPERATIONAL_REFRESH_INTERVALS],
                             mode=SelectSelectorMode.DROPDOWN,
                             translation_key="operational_refresh_interval",
                         )
@@ -425,9 +475,7 @@ class SonyAdcpOptionsFlow(OptionsFlow):
         )
 
 
-async def _async_validate(
-    host: str, port: int, password: str | None
-) -> ProjectorIdentity:
+async def _async_validate(host: str, port: int, password: str | None) -> ProjectorIdentity:
     client = AdcpClient(host, port, password)
     try:
         identity = await client.async_get_identity()

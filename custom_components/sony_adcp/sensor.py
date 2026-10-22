@@ -11,14 +11,13 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import SonyAdcpConfigEntry
-from .custom_commands import CUSTOM_SENSOR, parse_sensor_value
+from .custom_commands import CONF_CUSTOM_SENSORS, parse_sensor_value
 from .entity import SonyAdcpEntity
 from .manager import ProjectorManager, ProjectorState
 
@@ -75,15 +74,15 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     manager = entry.runtime_data.manager
-    for subentry in entry.subentries.values():
-        if subentry.subentry_type == CUSTOM_SENSOR:
-            async_add_entities(
-                [SonyAdcpCustomSensor(entry, manager, subentry)],
-                config_subentry_id=subentry.subentry_id,
-            )
+    # A shared physical device must keep one owner, not move between subentries.
     async_add_entities(
-        SonyAdcpSensor(entry, manager, description) for description in SENSORS
+        [
+            SonyAdcpCustomSensor(entry, manager, config)
+            for config in entry.options.get(CONF_CUSTOM_SENSORS, [])
+        ],
+        config_subentry_id=None,
     )
+    async_add_entities(SonyAdcpSensor(entry, manager, description) for description in SENSORS)
     known: set[str] = set()
 
     @callback
@@ -91,8 +90,7 @@ async def async_setup_entry(
         new_sensors = [
             description
             for description in TIMER_SENSORS
-            if description.key not in known
-            and description.value_fn(manager.state) is not None
+            if description.key not in known and description.value_fn(manager.state) is not None
         ]
         if not new_sensors:
             return
@@ -129,13 +127,13 @@ class SonyAdcpCustomSensor(SonyAdcpEntity, SensorEntity):
     """A user-named sensor from a shared, read-only ADCP query."""
 
     def __init__(
-        self, entry: SonyAdcpConfigEntry, manager: ProjectorManager, subentry: ConfigSubentry
+        self, entry: SonyAdcpConfigEntry, manager: ProjectorManager, config: dict[str, str]
     ) -> None:
         super().__init__(entry, manager)
-        self._config = subentry.data
+        self._config = config
         self._command = self._config["command"]
-        self._attr_name = subentry.title
-        self._attr_unique_id = f"{entry.unique_id}_custom_{subentry.subentry_id}"
+        self._attr_name = config["name"]
+        self._attr_unique_id = f"{entry.unique_id}_custom_{config['id']}"
         self._attr_native_unit_of_measurement = self._config.get("unit") or None
 
     async def async_added_to_hass(self) -> None:

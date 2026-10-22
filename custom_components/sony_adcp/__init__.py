@@ -21,8 +21,10 @@ from .const import (
     DOMAIN,
     PLATFORMS,
 )
+from .custom_commands import CONF_CUSTOM_SENSORS
 from .discovery import SdapListener
 from .manager import ProjectorManager
+from .migration import async_migrate_beta1_sensors, async_remove_deleted_custom_sensors
 from .protocol import (
     AdcpAuthenticationError,
     AdcpClient,
@@ -72,6 +74,7 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: SonyAdcpConfigEntry
 ) -> bool:
     """Set up a Sony projector from a config entry."""
+    async_remove_deleted_custom_sensors(hass, entry)
     client = AdcpClient(
         entry.data[CONF_HOST],
         entry.data.get(CONF_PORT, DEFAULT_PORT),
@@ -107,29 +110,25 @@ async def async_setup_entry(
     )
     entry.runtime_data = SonyAdcpRuntimeData(manager, unsubscribe)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    subentries = _custom_sensor_snapshot(entry)
+    sensors = _custom_sensor_snapshot(entry)
 
-    async def async_subentries_updated(
+    async def async_options_updated(
         hass: HomeAssistant, updated_entry: SonyAdcpConfigEntry
     ) -> None:
-        """Reload only changed subentries, not options or DHCP address updates."""
-        nonlocal subentries
+        """Reload only custom-sensor changes, not refresh or DHCP updates."""
+        nonlocal sensors
         updated = _custom_sensor_snapshot(updated_entry)
-        if updated != subentries:
-            subentries = updated
+        if updated != sensors:
+            sensors = updated
             await hass.config_entries.async_reload(updated_entry.entry_id)
 
-    entry.async_on_unload(entry.add_update_listener(async_subentries_updated))
+    entry.async_on_unload(entry.add_update_listener(async_options_updated))
     return True
 
 
-def _custom_sensor_snapshot(entry: SonyAdcpConfigEntry) -> dict:
-    """Copy nested data: HA mutates subentry objects when reconfiguring them."""
-    return {
-        key: (subentry.title, dict(subentry.data))
-        for key, subentry in entry.subentries.items()
-        if subentry.subentry_type == "custom_sensor"
-    }
+def _custom_sensor_snapshot(entry: SonyAdcpConfigEntry) -> list[dict[str, str]]:
+    """Copy options so in-place changes cannot mask a required reload."""
+    return [dict(sensor) for sensor in entry.options.get(CONF_CUSTOM_SENSORS, [])]
 
 
 async def async_unload_entry(
@@ -146,9 +145,9 @@ async def async_unload_entry(
 async def async_migrate_entry(
     hass: HomeAssistant, entry: SonyAdcpConfigEntry
 ) -> bool:
-    """Migrate older prototype entries without data loss."""
-    if entry.version == 1:
-        hass.config_entries.async_update_entry(entry, version=2)
+    """Preserve beta 1 settings, unique IDs and device ownership on upgrade."""
+    async_migrate_beta1_sensors(hass, entry)
+    hass.config_entries.async_update_entry(entry, version=2, minor_version=2)
     return True
 
 
