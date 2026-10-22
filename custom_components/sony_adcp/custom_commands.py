@@ -63,7 +63,7 @@ def parse_sensor_value(response: str, config: Mapping[str, str]) -> str | int | 
                     value = value[int(part)]
                 else:
                     value = value[part]
-        except (ValueError, TypeError, KeyError, IndexError) as err:
+        except (ValueError, TypeError, KeyError, IndexError, RecursionError) as err:
             raise ValueError("invalid_response") from err
     if config["value_type"] == "number":
         if isinstance(value, bool) or not isinstance(value, str | int | float):

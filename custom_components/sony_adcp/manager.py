@@ -639,7 +639,7 @@ class ProjectorManager:
     ) -> None:
         """Bound custom reads separately, rotating so a slow query cannot starve peers."""
         commands = tuple(self._custom_commands)
-        if not commands:
+        if not commands or not self._can_refresh_operational(power_revision):
             return
         if any(result.error == "authentication" for result in results.values()):
             for command in commands:
@@ -671,12 +671,16 @@ class ProjectorManager:
                     try:
                         response = await self.client.async_command(f"{command} ?")
                     except AdcpAuthenticationError:
+                        if not self._can_refresh_operational(power_revision):
+                            return
                         self._set_custom_result(
                             command, CustomCommandResult(error="authentication")
                         )
                         self._auth_failed()
                         return
                     except AdcpError:
+                        if not self._can_refresh_operational(power_revision):
+                            return
                         self._custom_retry_after[command] = loop.time() + CUSTOM_RETRY_INTERVAL
                         self._set_custom_result(command, CustomCommandResult(error="query_failed"))
                         continue
