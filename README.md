@@ -54,6 +54,10 @@ projector is fully on, at a configurable interval.
 
 ## Features
 
+> **2.4 development beta:** this branch adds named, read-only custom ADCP sensors
+> configured in Home Assistant. Stable v2.3.0 is unchanged.
+> See the [custom-sensor setup, refresh rules and testing guide](docs/custom-sensors.md).
+
 - Native projector-class `media_player`
 - Automatic discovery through Sony SDAP advertisements
 - Model and serial-number identification
@@ -64,6 +68,7 @@ projector is fully on, at a configurable interval.
   commands and periodic ADCP reconciliation
 - Input selection and current-source reporting
 - Signal-format sensor suitable for automations
+- Named custom ADCP sensors with optional JSON fields and numeric units (2.4 beta)
 - Video mute, picture mode, and supported numeric image controls
 - Automatic IP-address migration when DHCP changes the projector address
 - Home Assistant reauthentication, reconfiguration, diagnostics, and options
@@ -189,6 +194,7 @@ for every entity, attribute, query, option, and known freshness limitation.
 | Errors and warnings | Setup/reload only, and only if the projector is fully on then |
 | Operation and light-source hours | Setup and after confirmed shutdown to standby; retry on transitions to on while no counters are known, unless unsupported |
 | Firmware and identity | Setup/reload; not periodically polled |
+| Named custom sensors (2.4 beta) | Configurable refresh only while fully on and enabled; independent of Include picture settings. Separate two-second batch budget and 60-second query-error backoff; unavailable off or during transitions. |
 
 In **Configure**, **Refresh interval** defaults to **10 seconds**, with choices
 Disabled, 5, 10, or 30 seconds. **Include picture settings** defaults to on,
@@ -200,13 +206,15 @@ and pauses during fast power monitoring.
 power watchdog still reads input and signal when it finds the projector on.
 Setup, changed power/address announcements, and direct Home Assistant controls
 can also trigger reads. Turning only Include picture settings off leaves the
-configured input/signal refresh running.
+configured input/signal and custom-sensor refresh running.
 
 Only supported picture controls with enabled entities take part in periodic
 picture refresh. Their reads share a two-second budget per cycle and failed
 settings back off for at least 60 seconds, so the selected interval is not a
 guaranteed update deadline. See [refresh timing and failures](docs/state-updates.md#refresh-timing-and-failures).
-Custom-command sensors are not implemented.
+Custom sensors add read-only queries to that same schedule, with a separate
+two-second budget. Add them under your projector's integration entry; see
+[custom-sensor setup, refresh details and testing](docs/custom-sensors.md).
 
 ### Power transitions
 
@@ -279,7 +287,12 @@ included in this release.
 For the full entity list, media-player attributes, diagnostic limitations, and
 exact read triggers, see [How values update](docs/state-updates.md).
 
-### Updating to 2.3
+### Testing 2.4 and stable 2.3
+
+This branch is **v2.4.0b1**, an opt-in prerelease for custom-sensor development.
+In HACS, enable prerelease versions, Redownload **v2.4.0b1**, then restart Home
+Assistant. See the [beta guide](docs/custom-sensors.md) for setup and rollback.
+Before downgrading, delete custom sensor subentries while still on the beta.
 
 **v2.3.0 is the stable release**, incorporating the functionality tested in the
 2.3 betas. Update through HACS and restart Home Assistant. If needed, use
@@ -291,8 +304,7 @@ Use **Configure** to change this or the value-refresh interval. Firmware and hou
 sensors appear only where supported; short sessions may not change integer-hour
 counters. Respect the projector's cooldown and avoid rapid power cycling.
 
-To roll back, use HACS Redownload to select `v2.2.4` and restart Home Assistant.
-The historical beta releases remain available, but are superseded by v2.3.0.
+The historical 2.3 beta releases remain available, but are superseded by v2.3.0.
 
 ## DHCP address changes
 

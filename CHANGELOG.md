@@ -2,6 +2,25 @@
 
 All notable changes to Sony ADCP Projector are documented here.
 
+## 2.4.0b1 (prerelease)
+
+- Added named, read-only custom ADCP sensors as Home Assistant configuration
+  subentries: add/edit/remove under an existing projector, with stable entity
+  identity, text/numeric output, optional JSON field path and numeric unit.
+- Validate command names and always append a query marker. Reject arguments,
+  command sequences and templates. Up to 32 sensors per projector.
+- Share the operational refresh interval, enabled-entity filtering and existing
+  serialized ADCP client. Duplicate commands share a response per cycle,
+  including eligible built-in reads. Custom sensors are independent of the
+  Include picture settings checkbox.
+- Bound custom queries to two seconds per cycle, rotate after interrupted
+  batches, and back off failed queries for 60 seconds. Isolate query/conversion
+  failures, handle reauthentication and discard stale/removed in-flight values.
+- Pause custom reads during power transitions; invalidate caches on confirmed
+  power changes and expose custom sensors only while fully on with valid data.
+- Document configuration, exact refresh/failure behavior, testing and rollback.
+  No stable release or existing power-monitoring defaults are changed.
+
 ## 2.3.0
 
 - Promoted the tested 2.3 beta functionality to a stable release after maintainer
