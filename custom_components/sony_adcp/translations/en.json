@@ -147,6 +147,13 @@
         "execute": "Execute command"
       }
     },
+    "command_query_type": {
+      "options": {
+        "value": "Current value",
+        "range": "Allowed values / range",
+        "info": "Command information"
+      }
+    },
     "operational_refresh_interval": {
       "options": {
         "0": "Disabled",
@@ -169,7 +176,11 @@
     "command_rejected": {"message": "The projector rejected the command: {response}. No automatic retry was made."},
     "command_authentication": {"message": "Projector authentication failed. Complete reauthentication in the integration."},
     "command_outcome_unknown": {"message": "No valid acknowledgement was received before the connection or deadline ended. The command may have executed and was not automatically resent. Check projector state before repeating it."},
-    "command_connection": {"message": "Unable to communicate with the projector. Check its address, network-management setting and connection."}
+    "command_connection": {"message": "Unable to communicate with the projector. Check its address, network-management setting and connection."},
+    "query_type_invalid": {"message": "Choose Current value, Allowed values / range, or Command information. Queries cannot include a value or write operation."},
+    "query_stale": {"message": "The projector power state changed during this query. Try again after it is ready."},
+    "query_timeout": {"message": "The read-only query exceeded its 30-second deadline, including connection and queue waits. Try again when the projector is ready."},
+    "query_rejected": {"message": "The projector rejected the query: {response}. Check command support and try while fully on."}
   },
   "entity": {
     "number": {
