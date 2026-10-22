@@ -117,19 +117,145 @@ Power has its own update paths, independent of the configurable value interval:
 | Home Assistant turn-on | After acknowledgement, queries `power_status ?` immediately, then waits one second after each reply before the next query. Stops at confirmed `on`, or after at most 60 seconds. |
 | Home Assistant turn-off | Same fast checks, stopping at confirmed `standby` or `saving_standby`, or after at most 300 seconds (5 minutes). Cooling is not treated as completed shutdown. |
 
-Fast monitoring reuses the shared asynchronous connection; it does not create a
-thread or resend the power command. Its deadline includes network and lock
-waits. A new successful power command replaces the previous monitor.
+### Aggressive polling: the sequence
 
-During fast monitoring, ADCP power readings take priority over SDAP power and
-normal configurable refresh pauses. DHCP address changes still work. At the end,
-ordinary SDAP/watchdog behavior resumes; a successful turn-on also schedules a
-core refresh for input/signal. A remote-control power command does **not** start
-the fast monitor: it is detected through normal SDAP or the watchdog instead.
+The temporary monitor is an asynchronous background task, not a separate thread
+or a permanent one-second polling loop. It reuses the existing serialized ADCP
+client/connection, reconnecting when necessary.
 
-No power state is assumed from a successful command acknowledgement. Use Power
-status or `sony_power_status` for completion, not just a null `power_transition`.
-A timeout means monitoring ended, not that the projector reached its target.
+1. Home Assistant sends `power "on"` or `power "off"` and waits for the ADCP
+   command acknowledgement. Acknowledgement means the command was accepted,
+   **not** that startup or cooling has finished. If this command fails, no new
+   monitor starts and the control action reports the failure.
+2. After acknowledgement, `power_transition` becomes `on` or `off` and the
+   monitor starts in the background. The Home Assistant control action does not
+   wait for the projector to finish starting or cooling.
+3. The monitor requests `power_status ?` immediately, subject to the shared
+   connection lock. Every successful reply updates the Power status sensor and
+   `sony_power_status` without waiting for optional input/picture reads.
+4. If that reply is not the requested endpoint, the monitor waits **one second
+   after the attempt finishes**, then asks again. Request, reconnect, and lock
+   time are additional: this is approximately once per second on a responsive
+   projector, not a guaranteed one-second detection time.
+5. It stops as soon as the requested endpoint is confirmed, or when a stopping
+   condition below applies. It clears `power_transition` and returns to ordinary
+   state monitoring.
+
+The monitor only queries power. It never repeatedly sends a power command to
+force completion. The ADCP client's normal single reconnect/retry after a
+transport failure still applies to requests, including the initial control
+command; that is separate from the status-monitoring loop.
+
+### Startup and shutdown deadlines
+
+| Request | Confirmed endpoint that stops fast polling | Maximum monitoring window |
+| --- | --- | --- |
+| Turn on | `on` | 60 seconds |
+| Turn off | `standby` or `saving_standby` | 300 seconds (5 minutes) |
+
+These are **maximum observation windows**, not delays Home Assistant imposes on
+the projector. If startup completes in seven seconds, polling stops then. If a
+shutdown immediately reports standby, it stops immediately. The longer shutdown
+window allows the projector's fans/cooling stages to finish; a VPL-VW535 test
+took about 2 minutes 14 seconds from `cooling1` to standby.
+
+Only the requested endpoint counts. After turn-on, a first reply of `standby`
+does not stop the monitor. After turn-off, a first reply of `on` does not stop
+it. `startup`, `cooling1`, and `cooling2` are intermediate states, not successful
+completion. For example, turn-off may report `on` → `cooling1` → `cooling2` →
+`standby`; the monitor stays active through the two cooling stages. Models can
+skip stages or pass through them between queries, so every intermediate state
+is not guaranteed to appear in Home Assistant history.
+
+The deadline starts when the background monitor begins, **after** the initial
+power-command acknowledgement. All subsequent sleeps, shared-lock waits,
+connection setup, retries, and network reads count toward that one deadline.
+Receiving another intermediate state does not reset or extend it. The initial
+control request has its own normal ADCP I/O timeouts and is not included in this
+60/300-second window.
+
+The client's default timeout for an individual connection/read operation is
+five seconds. That is not a five-second limit on an entire status query: a query
+can also wait for the shared lock or need a reconnect/retry. The outer monitor
+deadline bounds those waits during fast monitoring. At that deadline an in-flight
+request is cancelled; if cancellation interrupts an active ADCP exchange, its
+connection is discarded so a late reply cannot be mistaken for the next reply.
+
+The one-second delay and 60/300-second deadlines are currently built-in defaults,
+not options in Configure. Refresh interval and Include picture settings do not
+change them. Even with Refresh interval Disabled, a successful Home Assistant
+power command still starts fast monitoring.
+
+### What pauses, and what keeps working
+
+While the monitor is active:
+
+- ADCP replies are the authority for power. SDAP power announcements are ignored
+  during this window so a delayed broadcast cannot overwrite a newer reply or
+  end the monitor early. The announcements are not queued for later replay.
+- The configurable input/signal/picture loop pauses, and the independent
+  60-second watchdog skips its normal core refresh. They do not compete by
+  adding their usual periodic reads to the power checks.
+- Input and signal are cleared whenever confirmed power is not `on`. Picture
+  controls keep their cached values; they are not refreshed by the power monitor.
+- DHCP address changes are still processed. Optional event-driven hour reads
+  still occur when applicable, such as after confirmed standby. Explicit control
+  actions can also use the shared connection; pausing periodic refresh is not
+  a lockout of all other ADCP requests.
+
+When a successful turn-on reaches `on`, a core refresh is scheduled to obtain
+input/signal and probe capabilities if needed. Configured refresh can then run
+again, provided it is enabled and the projector is available and fully on.
+When shutdown reaches standby, power is published first and the usage-hour
+read runs in the background; normal picture polling remains stopped in standby.
+
+### Timeouts, failures, and replacement commands
+
+| Event | What happens |
+| --- | --- |
+| Requested endpoint reached | Stop fast polling immediately and clear `power_transition`. Retain the confirmed endpoint. |
+| 60/300-second deadline expires | Stop fast polling and clear `power_transition`, without changing the last confirmed power to the requested target. The timeout is logged at debug level (visible with debug logging enabled). |
+| Status request fails temporarily | Mark unavailable, keep the last confirmed power, and retry after the normal one-second pause while time remains. A later successful reply restores availability. Failures do not extend the deadline. |
+| Authentication rejected during monitoring | Request Home Assistant reauthentication, mark unavailable, and stop the monitor. |
+| Another power command succeeds | Cancel and finish the old monitor, then start one monitor for the new request with a fresh direction-specific deadline. Monitors do not accumulate. |
+| Another power command fails | Do not replace an already active monitor. The failed control action reports its error; the old monitor can continue. |
+| Integration reload/unload or Home Assistant shutdown | Cancel the monitor and close the client. There is no persisted transition session to resume after restart. |
+
+**A monitoring timeout does not cancel startup or stop the projector's cooling.**
+The projector continues its own sequence. The integration neither reverses the
+command nor starts another aggressive monitor automatically. It returns to
+ordinary SDAP processing and the independent watchdog, which can subsequently
+discover the final state. There is no immediate forced fallback query at the
+deadline: the next eligible watchdog attempt follows its existing cadence, or
+an arriving SDAP announcement can update power sooner.
+
+For example, if shutdown is still `cooling2` at five minutes, that remains the
+last confirmed state (or the entity may be unavailable after communication
+errors). `power_transition` becomes null. A later standby announcement or ADCP
+watchdog reply can still update Power status to standby and trigger the hour
+refresh. The integration has stopped aggressive observation, not cooling.
+
+The original Home Assistant control action has already returned, so a later
+monitoring timeout is not returned as a delayed error from that action. There
+is currently no separate timeout-result entity or completion-reason attribute.
+A null `power_transition` alone cannot distinguish success from a timeout,
+authentication failure, cancellation, or replacement.
+
+For completion automations, use the Power status sensor or `sony_power_status`:
+wait for `on` after startup, or `standby`/`saving_standby` after shutdown. Allow
+for unavailable states and give your automation its own timeout if needed. The
+media player's simple on/off state is not as precise: startup and cooling both
+appear as on until standby is confirmed. Avoid repeatedly sending power commands
+just because cooling is taking time, and respect the projector's cooldown.
+
+### Power changes outside Home Assistant
+
+The fast monitor starts only after a successful power command through this
+integration. A physical remote, projector button, another controller, or a power
+change already in progress when the integration starts does **not** start it.
+Those changes use normal SDAP updates and the independent watchdog. The usual
+30-second SDAP advertisement interval can therefore still affect their detection
+latency. Reloading during startup/cooling does not resume a previous fast monitor.
 
 ## Refresh timing and failures
 
