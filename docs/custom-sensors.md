@@ -5,34 +5,59 @@ sensor entities. They belong to your existing projector and reuse its host,
 credentials, connection and refresh loop. No YAML, extra TCP sessions, fixed
 custom1/custom2 slots, or per-sensor polling tasks are needed.
 
-This is experimental functionality in **v2.4.0b1**, on
+This is experimental functionality in **v2.4.0b2**, on
 `beta/2.4-custom-sensors`. Stable v2.3.0 is unchanged. Model-specific commands
 and their response formats still need hardware testing.
 
 ## Install the beta
 
 In HACS, open Sony ADCP Projector, choose **Redownload**, enable prerelease/beta
-versions if necessary, select **v2.4.0b1**, and restart Home Assistant. Back up
+versions if necessary, select **v2.4.0b2**, and restart Home Assistant. Back up
 your configuration first. Home Assistant 2026.3 or newer is required.
 
 ## Add, edit or remove a sensor
 
-1. Open **Settings → Devices & services → Sony ADCP Projector**.
-2. On your existing projector entry, choose **Add custom sensor**. These are
-   Home Assistant configuration subentries, not new projector connections.
-3. Enter the fields below and save. Adding, editing or deleting a custom sensor
-   reloads the projector integration; you do not need to restart Home Assistant.
-4. Turn the projector fully on and wait for the next configured refresh cycle.
-   Saving validates the configuration, but deliberately does not query a
-   potentially sleeping projector or guarantee model-specific support.
+1. Open **Settings → Devices & services → Integrations → Sony ADCP Projector**.
+2. Open **Configure** for your existing projector (the gear icon on its entry).
+3. Choose **Custom sensors → Add custom sensor**.
+4. Enter the fields below and save. Adding, editing or deleting a sensor reloads
+   the integration; it does not remove the projector's power or picture controls.
+5. Turn the projector fully on and wait for the next configured refresh cycle.
+   Saving validates configuration, not model-specific command support.
 
-Use the custom sensor subentry's menu to edit or delete it. Editing preserves
-its unique identity and entity history, including when changing its command.
-If you also want to change an entity name that you previously customized in
-Home Assistant, rename that entity in its settings. Disabling the entity stops
-its query once Home Assistant removes it from the platform; deleting the
-subentry removes its entity registration. At most **32 custom sensors** may be
-configured per projector.
+To edit, use **Configure → Custom sensors → Edit custom sensor**, select a sensor,
+then save its settings. Its ID stays unchanged, including if you change the name
+or command. Home Assistant entity names that you manually customized are preserved.
+
+To remove, use **Configure → Custom sensors → Remove custom sensor**, select it,
+then confirm. Only the selected sensor registration is removed. Disabling its
+entity instead stops its query once Home Assistant removes it from the platform.
+
+To change refresh settings, use **Configure → Refresh settings**. Custom-sensor
+configuration changes reload the integration; refresh options still apply
+immediately without a reload. At most **32 custom sensors** are supported.
+
+There is no separate **+ Add custom sensor** action in beta 2. **Add device**
+still means another projector, not another value.
+
+### Upgrading from beta 1
+
+Beta 1 incorrectly assigned the same physical projector device to multiple
+sensor subentries. On affected Home Assistant versions this could remove the
+media-player entity and its power control when adding a custom sensor.
+
+Beta 2 migrates remaining beta 1 sensors automatically during the first restart:
+it saves the settings in the projector's options, reparents existing entity and
+device registrations, then removes the obsolete subentries. Existing sensor IDs,
+entity IDs and user customizations are kept where those registrations still
+exist. Migration is idempotent and supports both the older shared-device and
+newer single-owner registry APIs.
+
+You do **not** need to delete/re-add the integration, or manually remove beta 1
+sensors before upgrading. Controls already removed by beta 1 can be registered
+again on setup. Names or registry customizations already deleted by beta 1 cannot
+be reconstructed automatically; check any affected entity IDs and automations.
+If you previously removed your beta 1 sensor, add it again through Configure.
 
 | Field | Meaning |
 | --- | --- |
@@ -84,7 +109,7 @@ JSON field, text mode can show the whole response if it fits Home Assistant's
   reads resume after confirmed `on` and the end of any fast monitor. The power
   monitor itself still reads **only power**, with the existing 60-second startup
   and 300-second shutdown limits.
-- Subentry changes reload the integration and reset the custom cache. Unload
+- Custom-sensor configuration changes reload the integration and reset the custom cache. Unload
   cancels the shared refresh task; a late reply after a power change or removal
   does not republish a removed/stale value. Unchanged replies do not generate
   redundant entity updates.
@@ -116,7 +141,6 @@ Refresh interval Disabled, Include picture settings off, and a full power
 on/off cycle. Report model, firmware, command, selected path/type, and observed
 behavior; do not include passwords or sensitive raw replies.
 
-To roll back, delete custom sensor subentries **while still on the beta**, then
-redownload stable v2.3.0 in HACS and restart. Older versions do not implement
-custom subentries, so remove them before downgrading rather than leaving
-unsupported configuration behind.
+To roll back cleanly, first remove custom sensors through **Configure → Custom
+sensors** while still on beta 2, then redownload stable v2.3.0 in HACS and restart.
+Do not downgrade to beta 1: it contains the device-ownership regression.

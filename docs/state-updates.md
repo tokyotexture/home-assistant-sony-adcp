@@ -1,6 +1,6 @@
 # How values update
 
-This reference describes **v2.4.0b1**, including the stable v2.3.0 behavior plus
+This reference describes **v2.4.0b2**, including the stable v2.3.0 behavior plus
 experimental [custom ADCP sensors](custom-sensors.md). Stable v2.3.0 does not
 include custom sensors. Power timings and existing entity update rules are unchanged.
 
@@ -21,7 +21,9 @@ hour counters. Those values require ADCP queries.
 
 ## Refresh options
 
-Open **Settings → Devices & services → Sony ADCP Projector → Configure**.
+Open **Settings → Devices & services → Sony ADCP Projector → Configure → Refresh settings**.
+Manage named queries separately through **Configure → Custom sensors**; they stay
+under the parent projector's ownership, rather than creating subentries.
 
 | Option | Default / choices | Exactly what it controls |
 | --- | --- | --- |
