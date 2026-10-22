@@ -54,6 +54,8 @@ class DeviceOwnershipTest(unittest.IsolatedAsyncioTestCase):
             ],
         )
         self.hass.config_entries._entries[self.entry.entry_id] = self.entry
+        if hasattr(dr, "async_setup"):
+            dr.async_setup(self.hass)
         await dr.async_load(self.hass)
         await er.async_load(self.hass)
         self.devices = dr.async_get(self.hass)
