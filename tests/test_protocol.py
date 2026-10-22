@@ -7,9 +7,11 @@ import hashlib
 import importlib.util
 import sys
 import unittest
+from contextlib import suppress
 from enum import StrEnum
 from pathlib import Path
 from types import ModuleType
+from unittest.mock import patch
 
 # Load dependency-free modules without installing Home Assistant.
 _ROOT = Path(__file__).parents[1] / "custom_components" / "sony_adcp"
@@ -186,6 +188,188 @@ class AdcpClientTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(client.host, "127.0.0.2")
         self.assertIsNone(client._reader)
         self.assertIsNone(client._writer)
+
+
+class CommandCancellationTest(unittest.IsolatedAsyncioTestCase):
+    """Exercise cancelled exchanges against a real, deliberately delayed TCP peer."""
+
+    async def asyncSetUp(self) -> None:
+        self.blocked = asyncio.Event()
+        self.release = asyncio.Event()
+        self.phase = "command"
+        self.delayed_command = "input ?"
+        self.delayed_response = b'"hdmi1"\r\n'
+        self.partial_response = b""
+        self.power = "cooling2"
+        self.connections = 0
+        self.commands: list[str] = []
+        self.handlers: set[asyncio.Task] = set()
+        self.client_tasks: list[asyncio.Task] = []
+
+        async def handle(reader, writer):
+            task = asyncio.current_task()
+            self.handlers.add(task)
+            self.connections += 1
+            first_connection = self.connections == 1
+            try:
+                if first_connection and self.phase == "greeting":
+                    self.blocked.set()
+                    await self.release.wait()
+                writer.write(b"challenge\r\n" if self.phase == "auth" else b"NOKEY\r\n")
+                await writer.drain()
+                if self.phase == "auth":
+                    digest = (await reader.readline()).strip()
+                    expected = hashlib.sha256(b"challengesecret").hexdigest().encode()
+                    if digest != expected:
+                        return
+                    if first_connection:
+                        self.blocked.set()
+                        await self.release.wait()
+                    writer.write(b"ok\r\n")
+                    await writer.drain()
+                while raw := await reader.readline():
+                    command = raw.decode().strip()
+                    self.commands.append(command)
+                    if first_connection and command == self.delayed_command:
+                        writer.write(self.partial_response)
+                        await writer.drain()
+                        self.blocked.set()
+                        await self.release.wait()
+                        response = self.delayed_response
+                    else:
+                        response = f'"{self.power}"\r\n'.encode()
+                    writer.write(response)
+                    await writer.drain()
+            except (ConnectionError, asyncio.CancelledError):
+                pass
+            finally:
+                writer.close()
+                with suppress(OSError):
+                    await writer.wait_closed()
+                self.handlers.discard(task)
+
+        self.server = await asyncio.start_server(handle, "127.0.0.1", 0)
+        port = self.server.sockets[0].getsockname()[1]
+        self.client = AdcpClient("127.0.0.1", port, "secret", timeout=1)
+
+    async def asyncTearDown(self) -> None:
+        self.release.set()
+        for task in self.client_tasks:
+            task.cancel()
+        await asyncio.gather(*self.client_tasks, return_exceptions=True)
+        await self.client.async_close()
+        self.server.close()
+        await self.server.wait_closed()
+        handlers = tuple(self.handlers)
+        for task in handlers:
+            task.cancel()
+        await asyncio.gather(*handlers, return_exceptions=True)
+
+    def start_command(self, command):
+        task = asyncio.create_task(self.client.async_command(command))
+        self.client_tasks.append(task)
+        return task
+
+    async def cancel_exchange(self) -> None:
+        task = self.start_command(self.delayed_command)
+        await asyncio.wait_for(self.blocked.wait(), 1)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        self.release.set()
+        self.assertEqual(await self.client.async_get_power(), self.power)
+        self.assertEqual(self.connections, 2)
+        self.assertEqual(self.commands.count(self.delayed_command), 1)
+
+    async def test_cancelled_input_cannot_become_power(self) -> None:
+        await self.cancel_exchange()
+
+    async def test_cancelled_signal_cannot_become_power(self) -> None:
+        self.delayed_command = "signal ?"
+        self.delayed_response = b'"3840x2160/60p"\r\n'
+        await self.cancel_exchange()
+
+    async def test_cancelled_power_ack_cannot_become_power(self) -> None:
+        self.delayed_command = 'power "off"'
+        self.delayed_response = b"ok\r\n"
+        await self.cancel_exchange()
+
+    async def test_cancelled_partial_reply_is_discarded(self) -> None:
+        self.partial_response = b'"hdmi'
+        self.delayed_response = b'1"\r\n'
+        await self.cancel_exchange()
+
+    async def test_cancelled_drain_discards_sent_command(self) -> None:
+        await self.client._async_ensure_connected()
+
+        async def blocked_drain():
+            self.blocked.set()
+            await self.release.wait()
+
+        with patch.object(self.client._writer, "drain", side_effect=blocked_drain):
+            await self.cancel_exchange()
+
+    async def test_cancelled_greeting_reconnects(self) -> None:
+        self.phase = "greeting"
+        self.delayed_command = "power_status ?"
+        await self.cancel_exchange()
+
+    async def test_cancelled_authentication_reconnects(self) -> None:
+        self.phase = "auth"
+        self.delayed_command = "power_status ?"
+        await self.cancel_exchange()
+
+    async def test_cancelling_lock_waiter_preserves_active_exchange(self) -> None:
+        task = self.start_command(self.delayed_command)
+        await asyncio.wait_for(self.blocked.wait(), 1)
+        waiter = self.start_command("power_status ?")
+        await asyncio.sleep(0)
+        waiter.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await waiter
+        self.release.set()
+        self.assertEqual(await task, "hdmi1")
+        self.assertEqual(await self.client.async_get_power(), self.power)
+        self.assertEqual(self.connections, 1)
+
+    async def test_sdap_cancellation_keeps_manager_power_correct(self) -> None:
+        class FakeHass:
+            @staticmethod
+            def async_create_task(coroutine, name):
+                return asyncio.create_task(coroutine, name=name)
+
+        manager = ProjectorManager(
+            hass=FakeHass(),
+            client=self.client,
+            auth_failed=lambda: None,
+            host_changed=lambda host: None,
+            operational_refresh_interval=10,
+        )
+        manager._capabilities_probed = True
+        manager.state = ProjectorState(power_status="on", available=True)
+        task = asyncio.create_task(manager._async_refresh_operational())
+        self.client_tasks.append(task)
+        manager._operational_refresh_task = task
+        await asyncio.wait_for(self.blocked.wait(), 1)
+
+        manager.async_handle_announcement(
+            _discovery.DiscoveredProjector(
+                host=self.client.host, raw_power_status=5
+            )
+        )
+        self.client_tasks.append(manager._refresh_task)
+        self.release.set()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        try:
+            await asyncio.wait_for(manager._refresh_task, 2)
+            self.assertEqual(manager.state.power_status, "cooling2")
+            self.assertIsNone(manager.state.source)
+            self.assertIsNone(manager.state.signal)
+            self.assertTrue(manager.state.available)
+            self.assertEqual(self.connections, 2)
+        finally:
+            await manager.async_close()
 
 
 class AuthenticationProbeTest(unittest.IsolatedAsyncioTestCase):

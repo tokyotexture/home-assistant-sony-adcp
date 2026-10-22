@@ -174,6 +174,12 @@ class AdcpClient:
                     if response.lower().startswith(("err_", "ng")):
                         raise AdcpCommandError(command, response)
                     return response
+                except asyncio.CancelledError:
+                    # A greeting, auth reply, or command reply may still arrive.
+                    # Discard the stream before releasing the lock so the next
+                    # command cannot mistake that pending line for its own reply.
+                    await self.async_close()
+                    raise
                 except (AdcpAuthenticationError, AdcpCommandError):
                     raise
                 except (OSError, TimeoutError, asyncio.IncompleteReadError) as err:
