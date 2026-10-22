@@ -1,8 +1,7 @@
 # How values update
 
-This reference describes **2.3 beta, starting with v2.3.0b4**. It includes the
-picture-setting refresh introduced in beta 3 and firmware/usage hours introduced
-in beta 4. It does not describe the older stable v2.2.4 behavior.
+This reference describes **v2.3.0**, the stable release of the functionality
+tested in the 2.3 betas. It does not describe the older v2.2.4 behavior.
 
 The integration uses one shared asynchronous ADCP client. Entities display its
 cached values; they do not each run their own polling loop. SDAP announcements
@@ -384,6 +383,6 @@ It does **not** query the projector or make stale values fresh.
   No selected interval guarantees a precise timestamp for physical signal lock.
 
 Arbitrary custom-command sensors (`custom1`, `custom2`, and similar) are not
-implemented in this beta. Only the values and controls listed here are managed.
+implemented. Only the values and controls listed here are managed.
 
 [Back to the README](../README.md#state-updates)
