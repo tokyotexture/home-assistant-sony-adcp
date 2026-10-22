@@ -64,6 +64,7 @@ class SonyAdcpProjector(SonyAdcpEntity, MediaPlayerEntity):
     def extra_state_attributes(self) -> dict[str, str | None]:
         return {
             "sony_power_status": self._manager.state.power_status,
+            "power_transition": self._manager.power_transition_target,
             "signal": self._manager.state.signal,
         }
 
