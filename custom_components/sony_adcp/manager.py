@@ -29,6 +29,7 @@ from .discovery import DiscoveredProjector
 from .protocol import (
     AdcpAuthenticationError,
     AdcpClient,
+    AdcpCommandError,
     AdcpError,
     CommandInfo,
     ProjectorIdentity,
@@ -47,6 +48,7 @@ class ProjectorState:
     errors: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
     values: dict[str, str | float | bool] = field(default_factory=dict)
+    timer_hours: dict[str, int] = field(default_factory=dict)
     available: bool = False
 
 
@@ -81,6 +83,11 @@ class ProjectorManager:
         self._power_watchdog_task: asyncio.Task[None] | None = None
         self._power_transition_task: asyncio.Task[None] | None = None
         self._power_transition_target: str | None = None
+        self._timer_refresh_task: asyncio.Task[None] | None = None
+        self._timer_refresh_requested = False
+        self._timer_refresh_lock = asyncio.Lock()
+        self._timers_initialized = False
+        self._timers_supported: bool | None = None
         self._power_command_lock = asyncio.Lock()
         self._power_revision = 0
         self._closed = False
@@ -116,6 +123,7 @@ class ProjectorManager:
         """Read stable identity, initial state, and available capabilities."""
         self.identity = await self.client.async_get_identity()
         await self.async_refresh(include_diagnostics=True)
+        await self.async_refresh_timer_hours()
         if self.state.power_status not in {None, "standby", "saving_standby"}:
             await self.async_probe_capabilities()
         self._update_operational_refresh_task()
@@ -217,6 +225,7 @@ class ProjectorManager:
     @callback
     def _apply_power_status(self, power: str) -> None:
         """Publish confirmed power without waiting for optional status reads."""
+        previous_power = self.state.power_status
         self._power_revision += 1
         updated = replace(
             self.state,
@@ -229,6 +238,65 @@ class ProjectorManager:
             self.state = updated
             self._notify()
         self._update_operational_refresh_task()
+        if self._timers_initialized and (
+            (
+                power in POWER_OFF_STATES
+                and previous_power is not None
+                and previous_power not in POWER_OFF_STATES
+            )
+            or (power == "on" and previous_power != "on" and not self.state.timer_hours)
+        ):
+            self._schedule_timer_refresh()
+
+    @callback
+    def _schedule_timer_refresh(self) -> None:
+        """Refresh counters once per standby transition, never on a timer."""
+        if self._closed or self._timers_supported is False:
+            return
+        self._timer_refresh_requested = True
+        if self._timer_refresh_task is None or self._timer_refresh_task.done():
+            self._timer_refresh_task = self.hass.async_create_background_task(
+                self._async_timer_refresh_loop(), "Refresh Sony projector usage hours",
+                eager_start=False,
+            )
+
+    async def _async_timer_refresh_loop(self) -> None:
+        try:
+            # SDAP may also report a new DHCP address. Let that refresh finish
+            # moving the connection before reading optional counters.
+            refresh = self._refresh_task
+            if refresh is not None and not refresh.done():
+                await asyncio.shield(asyncio.gather(refresh, return_exceptions=True))
+            while self._timer_refresh_requested and not self._closed:
+                self._timer_refresh_requested = False
+                await self.async_refresh_timer_hours()
+        finally:
+            self._timer_refresh_task = None
+
+    async def async_refresh_timer_hours(self) -> None:
+        """Read optional counters at setup and standby, retaining known values on error."""
+        async with self._timer_refresh_lock:
+            if self._closed or self._timers_supported is False:
+                return
+            self._timers_initialized = True
+            try:
+                hours = await self.client.async_get_timer_hours()
+            except AdcpAuthenticationError:
+                self._auth_failed()
+                return
+            except AdcpCommandError as err:
+                if err.response == "err_cmd":
+                    self._timers_supported = False
+                return
+            except AdcpError:
+                return
+            if self._closed or not hours:
+                return
+            self._timers_supported = True
+            updated = {**self.state.timer_hours, **hours}
+            if updated != self.state.timer_hours:
+                self.state = replace(self.state, timer_hours=updated)
+                self._notify()
 
     async def async_read_command(self, command: str) -> str | None:
         try:
@@ -274,7 +342,8 @@ class ProjectorManager:
             return
         if projector.model and not self.identity.model:
             self.identity = ProjectorIdentity(
-                projector.model, projector.serial, self.identity.mac_address
+                projector.model, projector.serial, self.identity.mac_address,
+                self.identity.firmware,
             )
         announced_power = (
             SDAP_POWER_STATES.get(projector.raw_power_status)
@@ -441,6 +510,7 @@ class ProjectorManager:
                 self._operational_refresh_task,
                 self._power_watchdog_task,
                 self._power_transition_task,
+                self._timer_refresh_task,
             )
             if task is not None and not task.done()
         ]
@@ -449,6 +519,8 @@ class ProjectorManager:
         await asyncio.gather(*tasks, return_exceptions=True)
         self._power_transition_task = None
         self._power_transition_target = None
+        self._timer_refresh_requested = False
+        self._timer_refresh_task = None
         if self._availability_timer is not None:
             self._availability_timer.cancel()
         await self.client.async_close()

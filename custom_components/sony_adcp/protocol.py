@@ -54,6 +54,7 @@ class ProjectorIdentity:
     model: str | None = None
     serial: str | None = None
     mac_address: str | None = None
+    firmware: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +84,38 @@ def normalize_mac(value: str | None) -> str | None:
     if len(compact) != 12:
         return value.lower()
     return ":".join(compact[index : index + 2] for index in range(0, 12, 2))
+
+
+def _status_objects(response: str) -> list[dict[str, Any]]:
+    """Handle Sony's array-of-objects replies without guessing other formats."""
+    try:
+        payload = json.loads(response)
+    except (json.JSONDecodeError, TypeError):
+        return []
+    if isinstance(payload, dict):
+        return [payload]
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    return []
+
+
+def parse_firmware(response: str) -> str | None:
+    """Read the main firmware only, not the separate laser-module firmware."""
+    for item in _status_objects(response):
+        if isinstance(value := item.get("main"), str) and value.strip():
+            return value.strip()
+    return None
+
+
+def parse_timer_hours(response: str) -> dict[str, int]:
+    """Accept only reported, non-negative integer hour counters; never invent zero."""
+    result: dict[str, int] = {}
+    for item in _status_objects(response):
+        for key in ("operation", "light_src"):
+            value = item.get(key)
+            if type(value) is int and value >= 0:
+                result[key] = value
+    return result
 
 
 async def async_probe_authentication(
@@ -210,11 +243,24 @@ class AdcpClient:
                 return None
             return value or None
 
-        return ProjectorIdentity(
+        identity = ProjectorIdentity(
             model=await optional("modelname ?"),
             serial=await optional("serialnum ?"),
             mac_address=normalize_mac(await optional("mac_address ?")),
         )
+        try:
+            firmware = parse_firmware(await self.async_command("version ?"))
+        except AdcpAuthenticationError:
+            raise
+        except AdcpError:
+            firmware = None
+        return ProjectorIdentity(
+            identity.model, identity.serial, identity.mac_address, firmware
+        )
+
+    async def async_get_timer_hours(self) -> dict[str, int]:
+        """Read both hour counters with one optional query."""
+        return parse_timer_hours(await self.async_command("timer ?"))
 
     async def async_get_command_info(self, command: str) -> CommandInfo | None:
         """Get command metadata, accommodating Sony's two info syntaxes."""
