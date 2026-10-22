@@ -14,7 +14,7 @@ class FakeHass:
     def __init__(self):
         self.tasks = []
 
-    def async_create_task(self, coroutine, name):
+    def async_create_task(self, coroutine, name, **kwargs):
         task = asyncio.create_task(coroutine, name=name)
         self.tasks.append(task)
         return task
