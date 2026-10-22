@@ -57,6 +57,7 @@ projector is fully on, at a configurable interval.
 - Native projector-class `media_player`
 - Automatic discovery through Sony SDAP advertisements
 - Model and serial-number identification
+- Main firmware in device info and optional operation/light-source hour sensors
 - Automatic detection of password authentication
 - Fully asynchronous ADCP client with reconnect handling
 - Push-driven power with fast, bounded monitoring of Home Assistant power
@@ -160,6 +161,8 @@ Entity availability depends on the commands supported by the projector.
 | Signal sensor | Current input signal or format |
 | Errors sensor | Projector-reported errors |
 | Warnings sensor | Projector-reported warnings |
+| Operation hours sensor | Projector-reported operation counter, in hours (when supported) |
+| Light-source hours sensor | Projector-reported light-source counter, in hours (when supported) |
 | Video mute switch | Blank or restore the projected image |
 | Picture mode select | Select a supported picture mode |
 | Numeric controls | Brightness, contrast, sharpness, and other reported ranges |
@@ -173,6 +176,8 @@ Entity availability depends on the commands supported by the projector.
 | Input and signal | ADCP refresh while the projector is fully on |
 | Other commands sent by Home Assistant | Refreshed immediately after completion |
 | Picture mode, video mute, and image controls | Same periodic interval when Include picture settings is on; also setup and Home Assistant commands |
+| Operation and light-source hours | One shared query at setup and when power reaches standby; no periodic refresh |
+| Firmware | Read once at integration setup/reload for the device's firmware field |
 
 Operational state defaults to a 10-second refresh interval while the projector
 is fully on. To change it, open the integration and select **Configure**.
@@ -225,11 +230,42 @@ timeout or authentication failure also clears it. Use confirmed power state
 for completion automations. Responses are not optimistic, and startup/cooling
 continue to appear as an on media player until standby is confirmed.
 
+### Firmware and usage hours (2.3 beta)
+
+When supported, `version ?` supplies the `main` firmware version for the device
+page. The separate laser-module firmware is not used. Firmware is not polled;
+reload the integration or restart Home Assistant after updating projector firmware
+to refresh this field.
+
+One `timer ?` query reads the `operation` and `light_src` hour counters together.
+The integration reads them at setup and again **after power actually reaches
+standby or saving standby**, following any startup/cooling states. Sending an off
+command alone does not update the counters. This works for Home Assistant power
+commands and remote-control shutdowns observed through SDAP or the existing
+power watchdog. Repeated standby announcements do not cause repeated timer reads.
+
+The resulting **Operation hours** and **Light-source hours** diagnostic sensors
+are added only for counters that return valid values, including a genuine zero.
+They use hours, support long-term total-increasing statistics and maintenance
+automations, and retain their last known value during the session. They are
+snapshots, not live running-hour estimates: an on projector can accumulate hours
+until the next successful shutdown refresh. A read failure keeps existing values
+instead of inventing zero or marking the whole projector unavailable.
+
+Unsupported commands are optional and do not prevent setup. A projector that
+returns `err_cmd` for `timer ?` is not queried again until the integration reloads.
+If the initial read is temporarily inactive or unavailable and no counters are
+known, the integration also tries once when power next reaches on. Shutdown reads
+run in the background so a slow counter reply does not delay the standby state.
+The counters are reported by the projector, not calculated by Home Assistant;
+the integration never resets them. Other niche commands from issue #12 are not
+added by this beta.
+
 ### Testing prereleases
 
 The 2.3 beta is developed on `beta/2.3-power-transitions`; stable releases remain
 on `master`. In HACS, enable prerelease versions for this repository if needed,
-then use **Redownload** to select `v2.3.0b3` and restart Home Assistant. No
+then use **Redownload** to select `v2.3.0b4` and restart Home Assistant. No
 integration reconfiguration is required. To roll back, redownload `v2.2.4` and
 restart again.
 
@@ -237,6 +273,11 @@ Please test normal startup and shutdown, check that startup/cooling appear
 promptly, and verify the final on/standby state. Respect the projector's normal
 cooldown and avoid rapid power cycling. This beta has automated regression
 coverage but still needs real-projector validation.
+
+For beta 4, also check firmware on the device page and both usage-hour sensors
+where supported. Compare counters with the projector's own menu, then verify
+they refresh after a normal shutdown reaches standby. Short sessions may not
+change integer-hour counters. See [issue #12](https://github.com/tokyotexture/home-assistant-sony-adcp/issues/12).
 
 ## DHCP address changes
 

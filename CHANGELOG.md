@@ -2,6 +2,27 @@
 
 All notable changes to Sony ADCP Projector are documented here.
 
+## 2.3.0b4 (prerelease)
+
+- Added optional main firmware from `version ?` to device info, read once at
+  setup/reload. Skip laser-module firmware and gracefully omit unsupported data
+  ([#12](https://github.com/tokyotexture/home-assistant-sony-adcp/issues/12)).
+- Added diagnostic **Operation hours** and **Light-source hours** sensors for
+  valid `operation` and `light_src` counters from one `timer ?` reply. Sensors
+  use hours, duration device class, stable IDs, and total-increasing statistics.
+- Read counters at setup and when power actually reaches standby/saving standby,
+  including remote-control shutdowns observed by SDAP or the existing watchdog.
+  No 10-second or other periodic timer polling is added. If the first read was
+  inactive/unavailable, retry once at on while no counters are known.
+- Background shutdown reads do not delay standby publication. Deduplicate
+  repeated standby announcements, retain counters on optional read failures,
+  handle partial/invalid replies without inventing zero, and skip known
+  unsupported timer commands until reload. Preserve real counter resets to zero.
+- Preserve firmware during SDAP identity fallback, wait for DHCP migration
+  before background timer reads, and cancel pending reads on unload.
+- Added 31 parser, lifecycle, entity metadata, and real-TCP regression tests;
+  the suite now contains 92 tests. Hardware validation is pending.
+
 ## 2.3.0b3 (prerelease)
 
 - Added **Include picture settings**, enabled by default, to the integration's
