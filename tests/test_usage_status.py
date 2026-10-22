@@ -392,13 +392,27 @@ class UsageEntityTest(unittest.IsolatedAsyncioTestCase):
         sensor_api.SensorDeviceClass = SimpleNamespace(DURATION="duration")
         sensor_api.SensorStateClass = SimpleNamespace(TOTAL_INCREASING="total_increasing")
         entity_api = ModuleType("homeassistant.helpers.entity")
-        entity_api.Entity = type("Entity", (), {})
+        class FakeEntity:
+            async def async_added_to_hass(self):
+                pass
+
+            def async_on_remove(self, remove):
+                if not hasattr(self, "removals"):
+                    self.removals = []
+                self.removals.append(remove)
+
+            def async_write_ha_state(self):
+                pass
+
+        entity_api.Entity = FakeEntity
         entity_api.EntityCategory = SimpleNamespace(DIAGNOSTIC="diagnostic")
         registry_api = ModuleType("homeassistant.helpers.device_registry")
         registry_api.CONNECTION_NETWORK_MAC = "mac"
         registry_api.DeviceInfo = dict
         platform_api = ModuleType("homeassistant.helpers.entity_platform")
         platform_api.AddConfigEntryEntitiesCallback = object
+        config_api = ModuleType("homeassistant.config_entries")
+        config_api.ConfigSubentry = object
         self.modules = patch.dict(sys.modules, {
             "homeassistant.components": ModuleType("homeassistant.components"),
             "homeassistant.components.sensor": sensor_api,
@@ -406,6 +420,7 @@ class UsageEntityTest(unittest.IsolatedAsyncioTestCase):
             "homeassistant.helpers.entity": entity_api,
             "homeassistant.helpers.device_registry": registry_api,
             "homeassistant.helpers.entity_platform": platform_api,
+            "homeassistant.config_entries": config_api,
         })
         self.modules.start()
         self.addCleanup(self.modules.stop)
@@ -427,6 +442,7 @@ class UsageEntityTest(unittest.IsolatedAsyncioTestCase):
         self.manager.identity = _protocol.ProjectorIdentity(model="VPL-XW5000", firmware="1.101")
         self.unloads = []
         self.entry = SimpleNamespace(
+            subentries={},
             unique_id="1234", data={"host": "192.0.2.10"},
             runtime_data=SimpleNamespace(manager=self.manager), async_on_unload=self.unloads.append,
         )
@@ -454,6 +470,65 @@ class UsageEntityTest(unittest.IsolatedAsyncioTestCase):
         self.manager._notify()
         self.assertEqual(len(self.entities), 6)
         self.assertEqual(self.entities[-1]._attr_unique_id, "1234_timer_light_src")
+
+    async def test_custom_sensor_grouping_and_stable_identity(self):
+        subentry = SimpleNamespace(
+            subentry_type="custom_sensor", subentry_id="sensor-uuid", title="Custom aspect",
+            data={"command": "aspect", "value_type": "text", "json_field": "", "unit": ""},
+        )
+        self.entry.subentries = {"sensor-uuid": subentry}
+        groups = []
+        def add(entities, **kwargs):
+            groups.append((list(entities), kwargs))
+        await self.sensor.async_setup_entry(None, self.entry, add)
+        custom = groups[0][0][0]
+        self.assertEqual(groups[0][1], {"config_subentry_id": "sensor-uuid"})
+        self.assertEqual(custom._attr_unique_id, "1234_custom_sensor-uuid")
+        subentry.title = "Renamed"
+        subentry.data = {**subentry.data, "command": "gamma"}
+        edited = self.sensor.SonyAdcpCustomSensor(self.entry, self.manager, subentry)
+        self.assertEqual(edited._attr_unique_id, custom._attr_unique_id)
+        self.assertEqual(self.manager._custom_commands, {})  # Disabled entities aren't added.
+
+    async def test_custom_entity_value_availability_and_errors(self):
+        from custom_components.sony_adcp.custom_commands import CustomCommandResult
+        subentry = SimpleNamespace(
+            subentry_id="sensor-uuid", title="Gamma", data={
+                "command": "gamma", "value_type": "number", "json_field": "0.gamma", "unit": "",
+            },
+        )
+        custom = self.sensor.SonyAdcpCustomSensor(self.entry, self.manager, subentry)
+        self.manager.state = ProjectorState(power_status="on", available=True)
+        self.assertFalse(custom.available)
+
+        self.assertEqual(custom.extra_state_attributes["last_error"], "not_yet_refreshed")
+        self.manager.custom_results["gamma"] = CustomCommandResult(response='[{"gamma":0}]')
+        self.assertEqual(custom.native_value, 0)
+        self.assertTrue(custom.available)
+        self.manager.custom_results["gamma"] = CustomCommandResult(response='[{"other":1}]')
+        self.assertFalse(custom.available)
+        self.assertEqual(custom.extra_state_attributes["last_error"], "invalid_response")
+        self.manager.custom_results["gamma"] = CustomCommandResult(response='[{"gamma":2.4}]')
+        self.manager._power_transition_target = "off"
+        self.assertFalse(custom.available)
+        self.manager._power_transition_target = None
+        self.manager.state = ProjectorState(power_status="standby", available=True)
+        self.assertFalse(custom.available)
+
+    async def test_custom_entity_registers_only_on_add_and_unregisters_on_remove(self):
+        subentry = SimpleNamespace(
+            subentry_id="sensor-uuid", title="Aspect", data={
+                "command": "aspect", "value_type": "text", "json_field": "", "unit": "",
+            },
+        )
+        custom = self.sensor.SonyAdcpCustomSensor(self.entry, self.manager, subentry)
+        self.assertEqual(self.manager._custom_commands, {})
+        await custom.async_added_to_hass()
+        self.assertEqual(self.manager._custom_commands, {"aspect": 1})
+        for remove in custom.removals:
+            remove()
+        self.assertEqual(self.manager._custom_commands, {})
+        self.assertEqual(self.manager._listeners, set())
 
     async def test_device_info_exposes_firmware_not_a_separate_sensor(self):
         await self.sensor.async_setup_entry(None, self.entry, self.entities.extend)
