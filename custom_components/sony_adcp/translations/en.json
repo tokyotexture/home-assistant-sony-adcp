@@ -63,18 +63,72 @@
       "unique_id_mismatch": "The address belongs to a different projector"
     }
   },
+  "config_subentries": {
+    "custom_sensor": {
+      "entry_type": "Custom sensor",
+      "initiate_flow": {
+        "user": "Add custom sensor",
+        "reconfigure": "Edit custom sensor"
+      },
+      "step": {
+        "user": {
+          "title": "Add custom ADCP sensor",
+          "description": "Read-only queries share your projector's refresh interval and run only while fully on. Enter a command name without arguments or ?. Support and response format are checked at the next scheduled refresh, not when saving. [Custom sensor documentation](https://github.com/tokyotexture/home-assistant-sony-adcp/blob/beta/2.4-custom-sensors/docs/custom-sensors.md)",
+          "data": {
+            "name": "Sensor name",
+            "command": "ADCP command",
+            "value_type": "Value type",
+            "json_field": "JSON field path (optional)",
+            "unit": "Unit (numeric sensors only)"
+          },
+          "data_description": {
+            "command": "Lowercase command name, for example aspect. The integration appends ?; commands cannot set values.",
+            "json_field": "Leave empty for the whole response. For JSON, use dot-separated keys and zero-based array indexes, for example 0.main.",
+            "unit": "Optional display unit such as %. No device class or statistics type is inferred."
+          }
+        },
+        "reconfigure": {
+          "title": "Edit custom ADCP sensor",
+          "description": "Saving reloads the projector integration. The sensor keeps its identity and history. [Custom sensor documentation](https://github.com/tokyotexture/home-assistant-sony-adcp/blob/beta/2.4-custom-sensors/docs/custom-sensors.md)",
+          "data": {
+            "name": "Sensor name",
+            "command": "ADCP command",
+            "value_type": "Value type",
+            "json_field": "JSON field path (optional)",
+            "unit": "Unit (numeric sensors only)"
+          },
+          "data_description": {
+            "command": "Command name only, without arguments or ?. Support varies by model.",
+            "json_field": "Dot-separated keys and zero-based array indexes; empty means the whole response.",
+            "unit": "Numeric sensors only. Clear this field when switching to text."
+          }
+        }
+      },
+      "error": {
+        "invalid_name": "Enter a name between 1 and 100 characters",
+        "invalid_command": "Use a lowercase command name only: letters, digits and underscores, starting with a letter (maximum 64 characters). Do not include spaces, arguments or ?.",
+        "invalid_value_type": "Choose text or number",
+        "invalid_json_field": "Use dot-separated keys or array indexes (maximum 128 characters), or leave empty",
+        "invalid_unit": "Units require a numeric sensor and must be 30 characters or fewer"
+      },
+      "abort": {
+        "reconfigure_successful": "Custom sensor updated",
+        "too_many_sensors": "A projector can have at most 32 custom sensors. Remove one before adding another."
+      }
+    }
+  },
   "options": {
     "step": {
       "init": {
         "title": "Projector status refresh",
-        "description": "Choose how often to refresh input, signal, and optional picture settings while the projector is fully on. Normal refresh pauses during fast power-transition monitoring.",
+        "description": "Choose how often to refresh input, signal, custom sensors, and optional picture settings while the projector is fully on. Normal refresh pauses during fast power-transition monitoring.",
         "data": {
           "operational_refresh_interval": "Refresh interval",
           "refresh_picture_settings": "Include picture settings"
         },
         "data_description": {
-          "operational_refresh_interval": "Changes apply immediately. Disabled stops periodic input, signal, and picture-setting checks, but not SDAP or power monitoring.",
-          "refresh_picture_settings": "Refresh supported, enabled picture controls at the same interval: picture mode, sharpness, brightness, contrast, light output, Reality Creation, and video mute. Off keeps input and signal refresh only."
+          "operational_refresh_interval": "Changes apply immediately. Disabled stops periodic input, signal, picture-setting and custom-sensor checks, but not SDAP or power monitoring.",
+          "refresh_picture_settings": "Refresh supported, enabled picture controls at the same interval: picture mode, sharpness, brightness, contrast, light output, Reality Creation, and video mute. Off keeps input, signal and custom-sensor refresh."
         }
       }
     }
