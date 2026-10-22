@@ -1,8 +1,13 @@
 # How values update
 
-This reference describes **v2.4.0b3**, including the stable v2.3.0 behavior plus
+This reference describes **v2.4.0b4**, including the stable v2.3.0 behavior plus
 experimental [custom ADCP sensors](custom-sensors.md). Stable v2.3.0 does not
-include custom sensors or the [Send ADCP command action](custom-commands.md).
+include custom sensors or the [Send/Query ADCP command actions](custom-commands.md).
+
+Beta 4's [Query ADCP command](custom-commands.md#query-current-values) returns a
+fresh value, range or metadata to its caller. It never changes entity state or
+the update triggers listed below. It works with periodic refresh Disabled but
+is rejected during fast power monitoring, with a 30-second whole-action deadline.
 Power timings are unchanged. Beta 3 adds immediate matching-entity readback after
 acknowledged readable custom writes; it does not add another polling loop.
 

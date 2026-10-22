@@ -1,12 +1,89 @@
-# Send custom ADCP commands
+# Send and query custom ADCP commands
 
-Available in **v2.4.0b3**, an opt-in 2.4 prerelease. Stable v2.3.0 is unchanged.
+Available in **v2.4.0b4**, an opt-in 2.4 prerelease. Stable v2.3.0 is unchanged.
 Custom sensors remain read-only. The separate **Sony ADCP Projector: Send ADCP
 command** action changes settings or performs an operation on an existing projector.
+Beta 4 adds **Query ADCP command** for one-off reads and metadata discovery.
+
+## Query current values
+
+After installing v2.4.0b4 through HACS and restarting Home Assistant:
+
+1. Open **Developer Tools → Actions** and select **Sony ADCP Projector: Query
+   ADCP command** (`sony_adcp.query_command`).
+2. Select the existing projector, enter `aspect` as **Command**, and leave
+   **Query type** at **Current value**.
+3. Click **Perform action**. The response shows the projector's current value.
+
+Do **not** use Send → Execute for a query: Execute performs a no-value operation
+such as resetting picture-mode adjustments. Query never sends a bare command,
+value, reset option or relative adjustment. Enter just `aspect`, not `aspect ?`.
+
+| Query type | YAML value | Primary message | Purpose |
+| --- | --- | --- | --- |
+| Current value | `value` (default) | `aspect ?` | Current aspect-ratio setting |
+| Allowed values / range | `range` | `aspect --range` | Discover the choices accepted by this projector |
+| Command information | `info` | `aspect --info` | Command type/version and any reported range |
+
+Sony documents `aspect` on printed p. 13 and these menu-query formats on p. 9 of
+the [official command-list PDF](https://pro.sony/s3/2018/07/19110602/Sony_Protocol-Manual_Supported-Command-List_1st-Edition-Revised-1.pdf).
+Only after `err_cmd` or `err_option`, range/info queries try Sony's alternate
+`aspect ? --range` / `aspect ? --info` form (see the system-command formats on
+pp. 3 and 5). There is no alternate bare-command execution or metadata probe
+before a current-value query. Support still depends on model, input and power state.
+
+In an automation/script, capture the response with `response_variable`:
+
+```yaml
+- action: sony_adcp.query_command
+  data:
+    device_id: YOUR_PROJECTOR_DEVICE_ID
+    command: aspect
+    query_type: value
+  response_variable: aspect_result
+- variables:
+    current_aspect: "{{ aspect_result.data }}"
+```
+
+The action requires a response. Developer Tools displays it; scripts and
+automations must specify `response_variable`. An illustrative response, **not a
+claim about your model's current setting**, is:
+
+```yaml
+command: aspect
+query_type: value
+response: normal
+data: normal
+```
+
+`response` is the normalized ADCP reply: line ending, optional command prefix
+and surrounding scalar quotes removed by the existing client, not raw bytes.
+`data` parses valid JSON objects/arrays; all other replies remain strings,
+including numeric-looking scalar values. For numerical comparisons, explicitly
+convert with `| float` or `| int`. Choices retain their exact case and spelling;
+no friendly-label conversion occurs. Use `command: color_temp` with
+`query_type: range` or `info` to discover values such as `d65` if your model
+reports them; do not assume the PDF's `6500K` or uppercase `D65` works everywhere.
+
+Each call makes a fresh read using the existing authenticated async connection,
+even if periodic refresh is Disabled. It creates no sensor or polling task and
+does not update entity caches, power state, refresh options or capability caches.
+For ongoing state/history and automations triggered by changes, use a
+[custom sensor](custom-sensors.md) instead.
+
+Queries have the same administrator/device-routing rules as writes, share the
+serialized connection and refresh locks, and are rejected during the integration's
+fast power monitor. Queue waits, connection/reconnect attempts, reply waits and
+metadata-syntax fallback all count toward one **30-second deadline**. Reads may
+reconnect/retry through the existing client; writes are still never replayed.
+Unload cancels pending queries. A power change during a query discards its reply.
+Unsupported/inactive queries, authentication failures, connection errors and
+timeouts raise action errors, not successful response data. Unsupported commands
+are not remembered by this action: a later call attempts a fresh query again.
 
 ## Use the Home Assistant UI
 
-1. Install v2.4.0b3 through HACS with prerelease versions enabled, then restart HA.
+1. Install v2.4.0b4 through HACS with prerelease versions enabled, then restart HA.
 2. Open **Developer Tools → Actions**, or add an action in an automation/script.
 3. Find **Sony ADCP Projector: Send ADCP command** (`sony_adcp.send_command`).
 4. Select the **Projector** device, enter a **Command** name, and choose an
@@ -36,7 +113,8 @@ These are real documented command names and choices, **not a guarantee of suppor
 on every projector**. The PDF's model columns matter; its professional-model list
 does not establish support on VPL-VW/XW home-cinema models. Check your model's
 manual and returned metadata. The maintainer has tested a `color_temp` custom
-sensor on VPL-VW535; these new write operations still need hardware testing.
+sensor and a lowercase `d65` write on VPL-VW535. Other operations and the new
+query action still need hardware testing.
 
 | Intent | Command | Operation | Value | ADCP message (CRLF appended automatically) | Sony reference |
 | --- | --- | --- | --- | --- | --- |

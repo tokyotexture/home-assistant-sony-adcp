@@ -5,17 +5,19 @@ sensor entities. They belong to your existing projector and reuse its host,
 credentials, connection and refresh loop. No YAML, extra TCP sessions, fixed
 custom1/custom2 slots, or per-sensor polling tasks are needed.
 
-This is experimental functionality in **v2.4.0b3**, on
+This is experimental functionality in **v2.4.0b4**, on
 `beta/2.4-custom-sensors`. Stable v2.3.0 is unchanged. Model-specific commands
 and their response formats still need hardware testing.
 
 ## Install the beta
 
 In HACS, open Sony ADCP Projector, choose **Redownload**, enable prerelease/beta
-versions if necessary, select **v2.4.0b3**, and restart Home Assistant. Back up
+versions if necessary, select **v2.4.0b4**, and restart Home Assistant. Back up
 your configuration first. Home Assistant 2026.3 or newer is required.
 
 Beta 3 also adds a separate [Send ADCP command action](custom-commands.md).
+Beta 4 adds [Query ADCP command](custom-commands.md#query-current-values) for
+one-off current-value, range and command-information reads without a sensor.
 Sensors remain read-only. A successful action can immediately read back a
 matching enabled sensor while fully on, even when periodic refresh is Disabled;
 it does not wait for the next interval. Power/Execute/keys have different readback
@@ -124,7 +126,8 @@ JSON field, text mode can show the whole response if it fits Home Assistant's
 
 The separate write action can read back matching enabled sensors immediately;
 matching built-in picture-setting controls now also publish their successful
-readbacks to custom sensors. No standalone manual custom-query action is provided.
+readbacks to custom sensors. The beta 4 Query ADCP command action returns a fresh
+response to its caller only; it does not update these sensor entities or their schedule.
 SDAP announcements and
 the power watchdog do not directly refresh custom values. A custom query of a
 built-in value follows the rules above; it does not change that built-in entity's
