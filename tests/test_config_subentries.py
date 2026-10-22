@@ -143,3 +143,9 @@ class CustomSensorFlowTest(unittest.IsolatedAsyncioTestCase):
             result = await method()
             fields = {str(field) for field in result["data_schema"].schema}
             self.assertEqual(fields, set(translations["step"][result["step_id"]]["data"]))
+            description = translations["step"][result["step_id"]]["description"]
+            self.assertNotIn("https://", description)
+            self.assertIn("documentation_url", result["description_placeholders"])
+            self.assertIn("docs/custom-sensors.md", description.format(
+                **result["description_placeholders"]
+            ))
