@@ -537,6 +537,8 @@ class ProjectorManager:
             if self._power_transition_target is not None:
                 raise CommandValidationError("command_during_transition")
             async with self._operational_refresh_lock, self._power_command_lock:
+                if self._closed or self._power_transition_target is not None:
+                    raise CommandValidationError("command_not_ready")
                 revision = self._power_revision
                 info = self._action_command_info.get(request.command)
                 if request.command != "key" and info is None:
@@ -573,8 +575,7 @@ class ProjectorManager:
                 ):
                     result["readback"] = "skipped"
                 elif request.command in (
-                    {*SELECT_COMMANDS, *NUMBER_COMMANDS, *SWITCH_COMMANDS}
-                    | self._custom_commands.keys()
+                    self._picture_commands.keys() | self._custom_commands.keys()
                 ):
                     revision = self._power_revision
                     value = await self.async_read_command(request.command)
