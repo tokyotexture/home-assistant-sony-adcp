@@ -48,8 +48,8 @@ Power state follows Sony's local SDAP announcements and is independently
 reconciled through ADCP every 60 seconds in case announcements are missed or
 stale. After a Home Assistant power command, a short-lived ADCP monitor checks
 power approximately every second until the requested state is reached, for at
-most 60 seconds. The active input and signal are refreshed while the projector
-is on, at a configurable interval.
+most 60 seconds during startup or 5 minutes during shutdown. The active input
+and signal are refreshed while the projector is on, at a configurable interval.
 
 ## Features
 
@@ -168,7 +168,7 @@ Entity availability depends on the commands supported by the projector.
 | State | Update method |
 | --- | --- |
 | Power | SDAP announcements plus 60-second ADCP reconciliation |
-| Home Assistant power commands | Immediate ADCP check, then approximately every second for up to 60 seconds |
+| Home Assistant power commands | Immediate ADCP check, then approximately every second; up to 60 seconds for startup or 5 minutes for shutdown |
 | Input and signal | ADCP refresh while the projector is on |
 | Other commands sent by Home Assistant | Refreshed immediately after completion |
 | Picture mode, video mute, and image controls | Setup and Home Assistant commands only |
@@ -184,8 +184,10 @@ A successful Home Assistant turn-on or turn-off command starts one temporary
 async monitor, reusing the existing ADCP connection. It reads only
 `power_status ?`: immediately, then one second after each reply. It stops when
 turn-on reaches `on`, turn-off reaches `standby` or `saving_standby`, or the
-60-second deadline expires. Network delays count toward that deadline. A new
-successful power command replaces the previous monitor; power commands are
+deadline expires: 60 seconds for startup or 5 minutes for shutdown. Network
+delays count toward that deadline. These are maximums, not minimum monitoring
+periods: standby immediately ends shutdown monitoring. A new successful power
+command replaces the previous monitor; power commands are
 never automatically resent.
 
 During this window, confirmed ADCP readings take priority over potentially
@@ -206,7 +208,7 @@ continue to appear as an on media player until standby is confirmed.
 
 The 2.3 beta is developed on `beta/2.3-power-transitions`; stable releases remain
 on `master`. In HACS, enable prerelease versions for this repository if needed,
-then use **Redownload** to select `v2.3.0b1` and restart Home Assistant. No
+then use **Redownload** to select `v2.3.0b2` and restart Home Assistant. No
 integration reconfiguration is required. To roll back, redownload `v2.2.4` and
 restart again.
 
