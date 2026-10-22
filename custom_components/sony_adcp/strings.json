@@ -139,6 +139,14 @@
     }
   },
   "selector": {
+    "command_operation": {
+      "options": {
+        "set": "Set value",
+        "relative": "Adjust relatively",
+        "reset": "Reset setting",
+        "execute": "Execute command"
+      }
+    },
     "operational_refresh_interval": {
       "options": {
         "0": "Disabled",
@@ -147,6 +155,21 @@
         "30": "Every 30 seconds"
       }
     }
+  },
+  "exceptions": {
+    "command_name_invalid": {"message": "Enter one lowercase ADCP command name without arguments or options."},
+    "command_operation_invalid": {"message": "This operation is not supported for the command. Use explicit power on/off instead of the power-toggle key."},
+    "command_value_invalid": {"message": "The value is invalid, outside the reported range, or not a supported choice. Use the exact case reported by Sony; quote on/off strings in YAML."},
+    "command_value_unexpected": {"message": "Omit the value field for Reset and Execute operations."},
+    "command_metadata_required": {"message": "The projector did not provide command metadata. No write was sent. Check model support and try while fully on."},
+    "command_type_unsupported": {"message": "Only ordinary menu settings, execution commands, remote keys and explicit power are supported. Network settings and advanced calibration are excluded."},
+    "command_device_invalid": {"message": "Select an existing Sony ADCP projector device."},
+    "command_not_ready": {"message": "The projector integration is not loaded, is unloading, or its power state changed before sending. Try again after it is ready."},
+    "command_during_transition": {"message": "Wait for the power transition to finish before sending other commands."},
+    "command_rejected": {"message": "The projector rejected the command: {response}. No automatic retry was made."},
+    "command_authentication": {"message": "Projector authentication failed. Complete reauthentication in the integration."},
+    "command_outcome_unknown": {"message": "No valid acknowledgement was received before the connection or deadline ended. The command may have executed and was not automatically resent. Check projector state before repeating it."},
+    "command_connection": {"message": "Unable to communicate with the projector. Check its address, network-management setting and connection."}
   },
   "entity": {
     "number": {

@@ -1,0 +1,43 @@
+send_command:
+  name: Send ADCP command
+  description: >-
+    Send one structured ADCP write. Administrator access is required. Strings and
+    numbers are encoded using projector metadata; raw protocol text is not accepted.
+    Commands may change or reset settings. Acknowledgement does not prove completion.
+  fields:
+    device_id:
+      name: Projector
+      description: The existing Sony ADCP projector device.
+      required: true
+      selector:
+        device:
+          integration: sony_adcp
+    command:
+      name: Command
+      description: Command name only, without arguments or options, for example color_temp or contrast.
+      required: true
+      example: color_temp
+      selector:
+        text:
+    operation:
+      name: Operation
+      description: Set a value, adjust a number relatively, reset a setting, or execute a no-value command.
+      default: set
+      selector:
+        select:
+          translation_key: command_operation
+          options:
+            - set
+            - relative
+            - reset
+            - execute
+    value:
+      name: Value
+      description: >-
+        Required for Set and Relative; omit for Reset and Execute. Enter text or
+        a number without ADCP quote characters. Quote on/off strings when using YAML.
+      example: "6500K"
+      selector:
+        text:
+  response:
+    optional: true

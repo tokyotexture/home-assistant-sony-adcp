@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 
 from .const import (
@@ -34,6 +35,7 @@ from .protocol import (
 _LOGGER = logging.getLogger(__name__)
 
 DATA_LISTENER = "listener"
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 @dataclass(slots=True)
@@ -49,6 +51,9 @@ type SonyAdcpConfigEntry = ConfigEntry[SonyAdcpRuntimeData]
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Initialize the integration namespace and SDAP listener."""
+    from .services import async_register_services
+
+    async_register_services(hass)
     await async_get_listener(hass)
     return True
 

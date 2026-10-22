@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import math
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Final
@@ -21,6 +22,10 @@ class AdcpError(Exception):
 
 class AdcpConnectionError(AdcpError):
     """The projector could not be reached."""
+
+
+class AdcpOutcomeUnknownError(AdcpError):
+    """A write may have executed, but its acknowledgement was lost."""
 
 
 class AdcpAuthenticationError(AdcpError):
@@ -66,6 +71,7 @@ class CommandInfo:
     choices: tuple[str, ...] = ()
     minimum: float | None = None
     maximum: float | None = None
+    step: float | None = None
 
 
 def normalize_response(raw: bytes) -> str:
@@ -186,26 +192,36 @@ class AdcpClient:
             await self.async_close()
             self.host = host
 
-    async def async_command(self, command: str) -> str:
-        """Execute a command, reconnecting once after transport failure."""
+    async def async_command(self, command: str, *, retry: bool = True) -> str:
+        """Exchange one frame. Reads may retry; writes must pass retry=False."""
         encoded = command.encode("ascii")
+        if not encoded or any(byte < 32 or byte > 126 for byte in encoded):
+            raise ValueError("ADCP commands must be one printable ASCII line")
         if len(encoded) > _MAX_COMMAND_BYTES:
             raise ValueError("ADCP command exceeds Sony's 512-byte frame limit")
 
         async with self._lock:
-            for attempt in range(2):
+            for attempt in range(2 if retry else 1):
+                sent = False
                 try:
                     await self._async_ensure_connected()
                     assert self._reader is not None
                     assert self._writer is not None
+                    sent = True
                     self._writer.write(encoded + _LINE_END)
                     await self._writer.drain()
                     raw = await asyncio.wait_for(
                         self._reader.readuntil(_LINE_END), timeout=self.timeout
                     )
                     response = normalize_response(raw)
+                    if response.lower() == "err_auth":
+                        await self.async_close()
+                        raise AdcpAuthenticationError("Projector authentication was rejected")
                     if response.lower().startswith(("err_", "ng")):
                         raise AdcpCommandError(command, response)
+                    if not retry and response.lower() != "ok":
+                        await self.async_close()
+                        raise AdcpOutcomeUnknownError("Unexpected acknowledgement. Not retried.")
                     return response
                 except asyncio.CancelledError:
                     # A greeting, auth reply, or command reply may still arrive.
@@ -217,7 +233,11 @@ class AdcpClient:
                     raise
                 except (OSError, TimeoutError, asyncio.IncompleteReadError) as err:
                     await self.async_close()
-                    if attempt:
+                    if not retry and sent:
+                        raise AdcpOutcomeUnknownError(
+                            "Command may have executed; acknowledgement was lost. Not retried."
+                        ) from err
+                    if attempt or not retry:
                         raise AdcpConnectionError(
                             f"Could not communicate with {self.host}:{self.port}"
                         ) from err
@@ -227,13 +247,13 @@ class AdcpClient:
         return (await self.async_command("power_status ?")).lower()
 
     async def async_set_power(self, power: bool) -> None:
-        await self.async_command(f'power "{"on" if power else "off"}"')
+        await self.async_command(f'power "{"on" if power else "off"}"', retry=False)
 
     async def async_get_input(self) -> str:
         return (await self.async_command("input ?")).lower()
 
     async def async_set_input(self, source: str) -> None:
-        await self.async_command(f'input "{source}"')
+        await self.async_command(f'input "{source}"', retry=False)
 
     async def async_get_identity(self) -> ProjectorIdentity:
         async def optional(command: str) -> str | None:
@@ -276,7 +296,7 @@ class AdcpClient:
                 return CommandInfo(
                     command,
                     command_type,
-                    tuple(str(value).strip('"').lower() for value in range_value),
+                    tuple(str(value).strip('"') for value in range_value),
                 )
             if isinstance(range_value, dict):
                 return CommandInfo(
@@ -284,6 +304,7 @@ class AdcpClient:
                     command_type,
                     minimum=_as_float(range_value.get("min")),
                     maximum=_as_float(range_value.get("max")),
+                    step=_as_float(range_value.get("step")),
                 )
             return CommandInfo(command, command_type)
         return None
@@ -346,6 +367,7 @@ class AdcpClient:
 
 def _as_float(value: Any) -> float | None:
     try:
-        return float(value)
-    except (TypeError, ValueError):
+        number = float(value)
+        return number if math.isfinite(number) else None
+    except (TypeError, ValueError, OverflowError):
         return None
