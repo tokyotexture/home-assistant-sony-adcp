@@ -230,4 +230,4 @@ class PictureRefreshTest(unittest.IsolatedAsyncioTestCase):
         strings = json.loads((root / "strings.json").read_text())
         english = json.loads((root / "translations" / "en.json").read_text())
         self.assertEqual(strings, english)
-        self.assertIn("refresh_picture_settings", strings["options"]["step"]["init"]["data"])
+        self.assertIn("refresh_picture_settings", strings["options"]["step"]["refresh"]["data"])

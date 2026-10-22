@@ -26,11 +26,17 @@ class SubentryLifecycleTest(unittest.IsolatedAsyncioTestCase):
         exceptions.ConfigEntryAuthFailed = exceptions.ConfigEntryNotReady = RuntimeError
         helpers = ModuleType("homeassistant.helpers")
         helpers.device_registry = ModuleType("homeassistant.helpers.device_registry")
-        modules = patch.dict(sys.modules, {
-            "homeassistant.config_entries": config_api,
-            "homeassistant.exceptions": exceptions,
-            "homeassistant.helpers": helpers,
-        })
+        helpers.entity_registry = ModuleType("homeassistant.helpers.entity_registry")
+        helpers.entity_registry.async_get = Mock()
+        helpers.entity_registry.async_entries_for_config_entry = Mock(return_value=[])
+        modules = patch.dict(
+            sys.modules,
+            {
+                "homeassistant.config_entries": config_api,
+                "homeassistant.exceptions": exceptions,
+                "homeassistant.helpers": helpers,
+            },
+        )
         modules.start()
         self.addCleanup(modules.stop)
         for name in ("CONF_HOST", "CONF_PASSWORD", "CONF_PORT"):
@@ -50,17 +56,22 @@ class SubentryLifecycleTest(unittest.IsolatedAsyncioTestCase):
         self.integration = module
         self.manager = Mock(async_initialize=AsyncMock(), async_close=AsyncMock())
         self.listener = Mock()
-        self.hass = SimpleNamespace(config_entries=SimpleNamespace(
-            async_forward_entry_setups=AsyncMock(), async_reload=AsyncMock(),
-            async_unload_platforms=AsyncMock(return_value=True),
-        ))
-        self.subentry = SimpleNamespace(
-            title="Aspect", subentry_type="custom_sensor", data={"command": "aspect"},
+        self.hass = SimpleNamespace(
+            config_entries=SimpleNamespace(
+                async_forward_entry_setups=AsyncMock(),
+                async_reload=AsyncMock(),
+                async_unload_platforms=AsyncMock(return_value=True),
+            )
         )
+        self.sensor = {"id": "sensor-uuid", "name": "Aspect", "command": "aspect"}
         self.entry = SimpleNamespace(
-            data={"host": "192.0.2.1"}, options={}, entry_id="projector", unique_id="1234",
-            subentries={"sensor-uuid": self.subentry},
-            async_on_unload=Mock(), add_update_listener=Mock(return_value=Mock()),
+            data={"host": "192.0.2.1"},
+            options={"custom_sensors": [self.sensor]},
+            entry_id="projector",
+            unique_id="1234",
+            subentries={},
+            async_on_unload=Mock(),
+            add_update_listener=Mock(return_value=Mock()),
         )
         with (
             patch.object(module, "AdcpClient"),
@@ -71,23 +82,23 @@ class SubentryLifecycleTest(unittest.IsolatedAsyncioTestCase):
         self.updated = self.entry.add_update_listener.call_args.args[0]
 
     async def test_options_and_dhcp_updates_do_not_reload(self):
-        self.entry.options = {"operational_refresh_interval": 5}
+        self.entry.options = {**self.entry.options, "operational_refresh_interval": 5}
         self.entry.data = {"host": "192.0.2.99"}
         await self.updated(self.hass, self.entry)
         self.hass.config_entries.async_reload.assert_not_awaited()
 
     async def test_in_place_subentry_edit_reloads_once(self):
-        self.subentry.data = {"command": "gamma"}
+        self.sensor["command"] = "gamma"
         await self.updated(self.hass, self.entry)
         await self.updated(self.hass, self.entry)
         self.hass.config_entries.async_reload.assert_awaited_once_with("projector")
 
     async def test_rename_add_and_remove_reload(self):
-        self.subentry.title = "New name"
+        self.sensor["name"] = "New name"
         await self.updated(self.hass, self.entry)
-        self.entry.subentries["second"] = self.subentry
+        self.entry.options["custom_sensors"].append({**self.sensor, "id": "second"})
         await self.updated(self.hass, self.entry)
-        self.entry.subentries.pop("second")
+        self.entry.options["custom_sensors"].pop()
         await self.updated(self.hass, self.entry)
         self.assertEqual(self.hass.config_entries.async_reload.await_count, 3)
 

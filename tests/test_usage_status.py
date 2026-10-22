@@ -24,44 +24,57 @@ from test_protocol import (
 
 class StatusParsingTest(unittest.TestCase):
     def test_xw_firmware_reply_uses_main_not_laser(self):
-        self.assertEqual(_protocol.parse_firmware(
-            '[{"main":"1.101"},{"laser":"21/00/00/00/00"}]'
-        ), "1.101")
+        self.assertEqual(
+            _protocol.parse_firmware('[{"main":"1.101"},{"laser":"21/00/00/00/00"}]'), "1.101"
+        )
 
     def test_unknown_firmware_stays_unknown(self):
-        for response in ('[{"laser":"1.0"}]', '"1.0"', '[]', 'null', 'not json',
-                         '[{"main":null}]', '[{"main":5}]', '[{"main":" "}]'):
+        for response in (
+            '[{"laser":"1.0"}]',
+            '"1.0"',
+            "[]",
+            "null",
+            "not json",
+            '[{"main":null}]',
+            '[{"main":5}]',
+            '[{"main":" "}]',
+        ):
             with self.subTest(response=response):
                 self.assertIsNone(_protocol.parse_firmware(response))
 
     def test_xw_timer_reply_and_zero(self):
-        self.assertEqual(_protocol.parse_timer_hours(
-            '[{"operation":3146},{"light_src":3084}]'
-        ), {"operation": 3146, "light_src": 3084})
-        self.assertEqual(_protocol.parse_timer_hours(
-            '{"operation":0,"light_src":0}'
-        ), {"operation": 0, "light_src": 0})
+        self.assertEqual(
+            _protocol.parse_timer_hours('[{"operation":3146},{"light_src":3084}]'),
+            {"operation": 3146, "light_src": 3084},
+        )
+        self.assertEqual(
+            _protocol.parse_timer_hours('{"operation":0,"light_src":0}'),
+            {"operation": 0, "light_src": 0},
+        )
 
     def test_rejects_invalid_counters_without_inventing_zero(self):
         for value in (None, True, False, -1, 1.5, "3084", [], {}):
             with self.subTest(value=value):
                 response = json.dumps([{"operation": value}, {"light_src": value}])
                 self.assertEqual(_protocol.parse_timer_hours(response), {})
-        for response in ('not json', 'null', '[]', '[1,"text",null]', '{"other":8}'):
+        for response in ("not json", "null", "[]", '[1,"text",null]', '{"other":8}'):
             self.assertEqual(_protocol.parse_timer_hours(response), {})
 
     def test_partial_counters_and_unknown_fields(self):
-        self.assertEqual(_protocol.parse_timer_hours(
-            '[null,{"operation":12,"light_src":-3,"other":900}]'
-        ), {"operation": 12})
+        self.assertEqual(
+            _protocol.parse_timer_hours('[null,{"operation":12,"light_src":-3,"other":900}]'),
+            {"operation": 12},
+        )
 
 
 class IdentityStatusTest(unittest.IsolatedAsyncioTestCase):
     async def test_identity_reads_firmware_once(self):
         client = _protocol.AdcpClient("192.0.2.10", 53595, None)
         replies = {
-            "modelname ?": "VPL-XW5000", "serialnum ?": "1234",
-            "mac_address ?": "001122334455", "version ?": '[{"main":"1.101"}]',
+            "modelname ?": "VPL-XW5000",
+            "serialnum ?": "1234",
+            "mac_address ?": "001122334455",
+            "version ?": '[{"main":"1.101"}]',
         }
         client.async_command = AsyncMock(side_effect=lambda command: replies[command])
         identity = await client.async_get_identity()
@@ -72,22 +85,28 @@ class IdentityStatusTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(client.async_command.await_count, 4)
 
     async def test_optional_version_error_does_not_break_identity(self):
-        for error in (_protocol.AdcpCommandError("version ?", "err_cmd"),
-                      _protocol.AdcpConnectionError("offline")):
+        for error in (
+            _protocol.AdcpCommandError("version ?", "err_cmd"),
+            _protocol.AdcpConnectionError("offline"),
+        ):
             client = _protocol.AdcpClient("192.0.2.10", 53595, None)
+
             async def command(query, failure=error):
                 if query == "version ?":
                     raise failure
                 return "model" if query == "modelname ?" else ""
+
             client.async_command = command
             self.assertIsNone((await client.async_get_identity()).firmware)
 
     async def test_version_authentication_error_is_not_hidden(self):
         client = _protocol.AdcpClient("192.0.2.10", 53595, None)
+
         async def command(query):
             if query == "version ?":
                 raise _protocol.AdcpAuthenticationError("bad")
             return ""
+
         client.async_command = command
         with self.assertRaises(_protocol.AdcpAuthenticationError):
             await client.async_get_identity()
@@ -102,11 +121,13 @@ class IdentityStatusTest(unittest.IsolatedAsyncioTestCase):
         commands = []
         connections = []
         replies = {
-            "modelname ?": '"VPL-XW5000"', "serialnum ?": '"1234"',
+            "modelname ?": '"VPL-XW5000"',
+            "serialnum ?": '"1234"',
             "mac_address ?": '"001122334455"',
             "version ?": '[{"main":"1.101"},{"laser":"21/00/00/00/00"}]',
             "timer ?": '[{"operation":3146},{"light_src":3084}]',
         }
+
         async def handle(reader, writer):
             connections.append(writer)
             try:
@@ -124,9 +145,13 @@ class IdentityStatusTest(unittest.IsolatedAsyncioTestCase):
         client = _protocol.AdcpClient("127.0.0.1", server.sockets[0].getsockname()[1], None)
         try:
             self.assertEqual((await client.async_get_identity()).firmware, "1.101")
-            self.assertEqual(await client.async_get_timer_hours(), {
-                "operation": 3146, "light_src": 3084,
-            })
+            self.assertEqual(
+                await client.async_get_timer_hours(),
+                {
+                    "operation": 3146,
+                    "light_src": 3084,
+                },
+            )
             self.assertEqual(len(connections), 1)
             self.assertEqual(commands.count("timer ?"), 1)
             self.assertEqual(commands.count("version ?"), 1)
@@ -173,8 +198,11 @@ class UsageRefreshTest(unittest.IsolatedAsyncioTestCase):
         self.client = UsageClient()
         self.auth_failures = []
         self.manager = ProjectorManager(
-            self.hass, self.client, lambda: self.auth_failures.append(True),
-            lambda host: None, operational_refresh_interval=0,
+            self.hass,
+            self.client,
+            lambda: self.auth_failures.append(True),
+            lambda host: None,
+            operational_refresh_interval=0,
         )
         self.manager._capabilities_probed = True
 
@@ -216,18 +244,24 @@ class UsageRefreshTest(unittest.IsolatedAsyncioTestCase):
         await self.initialize_hours()
         self.client.last_power = "standby"
         for raw in (4, 5):
-            self.manager.async_handle_announcement(_discovery.DiscoveredProjector(
-                host=self.client.host, raw_power_status=raw,
-            ))
+            self.manager.async_handle_announcement(
+                _discovery.DiscoveredProjector(
+                    host=self.client.host,
+                    raw_power_status=raw,
+                )
+            )
             # Avoid a full refresh racing this deliberately simulated SDAP sequence.
             if self.manager._refresh_task is not None:
                 self.manager._refresh_task.cancel()
                 await asyncio.gather(self.manager._refresh_task, return_exceptions=True)
         self.assertEqual(self.client.timer_calls, 1)
         for _ in range(3):
-            self.manager.async_handle_announcement(_discovery.DiscoveredProjector(
-                host=self.client.host, raw_power_status=0,
-            ))
+            self.manager.async_handle_announcement(
+                _discovery.DiscoveredProjector(
+                    host=self.client.host,
+                    raw_power_status=0,
+                )
+            )
         await self.finish_hours()
         self.assertEqual(self.client.timer_calls, 2)
 
@@ -242,14 +276,19 @@ class UsageRefreshTest(unittest.IsolatedAsyncioTestCase):
         await self.initialize_hours()
         hosts = []
         original = self.client.async_get_timer_hours
+
         async def read_hours():
             hosts.append(self.client.host)
             return await original()
+
         self.client.async_get_timer_hours = read_hours
         self.client.last_power = "standby"
-        self.manager.async_handle_announcement(_discovery.DiscoveredProjector(
-            host="192.0.2.99", raw_power_status=0,
-        ))
+        self.manager.async_handle_announcement(
+            _discovery.DiscoveredProjector(
+                host="192.0.2.99",
+                raw_power_status=0,
+            )
+        )
         await self.finish_hours()
         self.assertEqual(hosts, ["192.0.2.99"])
         self.assertEqual(self.client.timer_calls, 2)
@@ -368,9 +407,13 @@ class UsageRefreshTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_sdap_identity_fallback_preserves_firmware(self):
         self.manager.identity = _protocol.ProjectorIdentity(firmware="1.101")
-        self.manager.async_handle_announcement(_discovery.DiscoveredProjector(
-            host=self.client.host, model="VPL-XW5000", serial="1234",
-        ))
+        self.manager.async_handle_announcement(
+            _discovery.DiscoveredProjector(
+                host=self.client.host,
+                model="VPL-XW5000",
+                serial="1234",
+            )
+        )
         self.assertEqual(self.manager.identity.firmware, "1.101")
 
 
@@ -392,6 +435,7 @@ class UsageEntityTest(unittest.IsolatedAsyncioTestCase):
         sensor_api.SensorDeviceClass = SimpleNamespace(DURATION="duration")
         sensor_api.SensorStateClass = SimpleNamespace(TOTAL_INCREASING="total_increasing")
         entity_api = ModuleType("homeassistant.helpers.entity")
+
         class FakeEntity:
             async def async_added_to_hass(self):
                 pass
@@ -413,19 +457,23 @@ class UsageEntityTest(unittest.IsolatedAsyncioTestCase):
         platform_api.AddConfigEntryEntitiesCallback = object
         config_api = ModuleType("homeassistant.config_entries")
         config_api.ConfigSubentry = object
-        self.modules = patch.dict(sys.modules, {
-            "homeassistant.components": ModuleType("homeassistant.components"),
-            "homeassistant.components.sensor": sensor_api,
-            "homeassistant.helpers": ModuleType("homeassistant.helpers"),
-            "homeassistant.helpers.entity": entity_api,
-            "homeassistant.helpers.device_registry": registry_api,
-            "homeassistant.helpers.entity_platform": platform_api,
-            "homeassistant.config_entries": config_api,
-        })
+        self.modules = patch.dict(
+            sys.modules,
+            {
+                "homeassistant.components": ModuleType("homeassistant.components"),
+                "homeassistant.components.sensor": sensor_api,
+                "homeassistant.helpers": ModuleType("homeassistant.helpers"),
+                "homeassistant.helpers.entity": entity_api,
+                "homeassistant.helpers.device_registry": registry_api,
+                "homeassistant.helpers.entity_platform": platform_api,
+                "homeassistant.config_entries": config_api,
+            },
+        )
         self.modules.start()
         self.addCleanup(self.modules.stop)
         for name, value in {
-            "CONF_HOST": "host", "CONF_NAME": "name",
+            "CONF_HOST": "host",
+            "CONF_NAME": "name",
             "UnitOfTime": SimpleNamespace(HOURS="h"),
         }.items():
             item = patch.object(_HA_CONST, name, value, create=True)
@@ -443,8 +491,11 @@ class UsageEntityTest(unittest.IsolatedAsyncioTestCase):
         self.unloads = []
         self.entry = SimpleNamespace(
             subentries={},
-            unique_id="1234", data={"host": "192.0.2.10"},
-            runtime_data=SimpleNamespace(manager=self.manager), async_on_unload=self.unloads.append,
+            options={},
+            unique_id="1234",
+            data={"host": "192.0.2.10"},
+            runtime_data=SimpleNamespace(manager=self.manager),
+            async_on_unload=self.unloads.append,
         )
         self.entities = []
 
@@ -453,8 +504,12 @@ class UsageEntityTest(unittest.IsolatedAsyncioTestCase):
             unload()
         await self.manager.async_close()
 
+    def add_entities(self, entities, **kwargs):
+        self.assertIsNone(kwargs.get("config_subentry_id"))
+        self.entities.extend(entities)
+
     async def test_only_reported_counters_create_entities_with_hours_and_statistics(self):
-        await self.sensor.async_setup_entry(None, self.entry, self.entities.extend)
+        await self.sensor.async_setup_entry(None, self.entry, self.add_entities)
         self.assertEqual(len(self.entities), 4)
         self.manager.state = ProjectorState(timer_hours={"operation": 0})
         self.manager._notify()
@@ -472,32 +527,41 @@ class UsageEntityTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.entities[-1]._attr_unique_id, "1234_timer_light_src")
 
     async def test_custom_sensor_grouping_and_stable_identity(self):
-        subentry = SimpleNamespace(
-            subentry_type="custom_sensor", subentry_id="sensor-uuid", title="Custom aspect",
-            data={"command": "aspect", "value_type": "text", "json_field": "", "unit": ""},
-        )
-        self.entry.subentries = {"sensor-uuid": subentry}
+        config = {
+            "id": "sensor-uuid",
+            "name": "Custom aspect",
+            "command": "aspect",
+            "value_type": "text",
+            "json_field": "",
+            "unit": "",
+        }
+        self.entry.options = {"custom_sensors": [config]}
         groups = []
+
         def add(entities, **kwargs):
             groups.append((list(entities), kwargs))
+
         await self.sensor.async_setup_entry(None, self.entry, add)
         custom = groups[0][0][0]
-        self.assertEqual(groups[0][1], {"config_subentry_id": "sensor-uuid"})
+        self.assertEqual(groups[0][1], {"config_subentry_id": None})
         self.assertEqual(custom._attr_unique_id, "1234_custom_sensor-uuid")
-        subentry.title = "Renamed"
-        subentry.data = {**subentry.data, "command": "gamma"}
-        edited = self.sensor.SonyAdcpCustomSensor(self.entry, self.manager, subentry)
+        config = {**config, "name": "Renamed", "command": "gamma"}
+        edited = self.sensor.SonyAdcpCustomSensor(self.entry, self.manager, config)
         self.assertEqual(edited._attr_unique_id, custom._attr_unique_id)
         self.assertEqual(self.manager._custom_commands, {})  # Disabled entities aren't added.
 
     async def test_custom_entity_value_availability_and_errors(self):
         from custom_components.sony_adcp.custom_commands import CustomCommandResult
-        subentry = SimpleNamespace(
-            subentry_id="sensor-uuid", title="Gamma", data={
-                "command": "gamma", "value_type": "number", "json_field": "0.gamma", "unit": "",
-            },
-        )
-        custom = self.sensor.SonyAdcpCustomSensor(self.entry, self.manager, subentry)
+
+        config = {
+            "id": "sensor-uuid",
+            "name": "Gamma",
+            "command": "gamma",
+            "value_type": "number",
+            "json_field": "0.gamma",
+            "unit": "",
+        }
+        custom = self.sensor.SonyAdcpCustomSensor(self.entry, self.manager, config)
         self.manager.state = ProjectorState(power_status="on", available=True)
         self.assertFalse(custom.available)
 
@@ -516,12 +580,15 @@ class UsageEntityTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(custom.available)
 
     async def test_custom_entity_registers_only_on_add_and_unregisters_on_remove(self):
-        subentry = SimpleNamespace(
-            subentry_id="sensor-uuid", title="Aspect", data={
-                "command": "aspect", "value_type": "text", "json_field": "", "unit": "",
-            },
-        )
-        custom = self.sensor.SonyAdcpCustomSensor(self.entry, self.manager, subentry)
+        config = {
+            "id": "sensor-uuid",
+            "name": "Aspect",
+            "command": "aspect",
+            "value_type": "text",
+            "json_field": "",
+            "unit": "",
+        }
+        custom = self.sensor.SonyAdcpCustomSensor(self.entry, self.manager, config)
         self.assertEqual(self.manager._custom_commands, {})
         await custom.async_added_to_hass()
         self.assertEqual(self.manager._custom_commands, {"aspect": 1})
@@ -531,6 +598,6 @@ class UsageEntityTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.manager._listeners, set())
 
     async def test_device_info_exposes_firmware_not_a_separate_sensor(self):
-        await self.sensor.async_setup_entry(None, self.entry, self.entities.extend)
+        await self.sensor.async_setup_entry(None, self.entry, self.add_entities)
         self.assertEqual(self.entities[0]._attr_device_info["sw_version"], "1.101")
         self.assertEqual(len(self.entities), 4)
