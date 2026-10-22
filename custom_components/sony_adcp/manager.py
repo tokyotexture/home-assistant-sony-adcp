@@ -14,8 +14,9 @@ from .const import (
     DEFAULT_SOURCES,
     NUMBER_COMMANDS,
     POWER_OFF_STATES,
+    POWER_OFF_TRANSITION_TIMEOUT,
+    POWER_ON_TRANSITION_TIMEOUT,
     POWER_TRANSITION_INTERVAL,
-    POWER_TRANSITION_TIMEOUT,
     POWER_WATCHDOG_INTERVAL,
     SDAP_POWER_STATES,
     SELECT_COMMANDS,
@@ -313,10 +314,11 @@ class ProjectorManager:
     async def _async_power_transition_loop(self, power: bool) -> None:
         """Query only power once a second, for at most the transition timeout."""
         target_states = {"on"} if power else POWER_OFF_STATES
+        timeout = POWER_ON_TRANSITION_TIMEOUT if power else POWER_OFF_TRANSITION_TIMEOUT
         reached_target = False
         try:
             # Includes connection setup, retries, lock waits, and the final read.
-            async with asyncio.timeout(POWER_TRANSITION_TIMEOUT):
+            async with asyncio.timeout(timeout):
                 while True:
                     try:
                         status = await self.client.async_get_power()
