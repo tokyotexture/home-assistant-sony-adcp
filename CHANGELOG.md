@@ -2,6 +2,26 @@
 
 All notable changes to Sony ADCP Projector are documented here.
 
+## 2.3.0b1 (prerelease)
+
+- Added bounded, asynchronous power-transition monitoring after a successful
+  Home Assistant turn-on or turn-off command
+  ([#16](https://github.com/tokyotexture/home-assistant-sony-adcp/issues/16)).
+- Query `power_status ?` immediately and approximately every second, reusing
+  the serialized ADCP connection. Stop at the requested endpoint (`on` or
+  `standby`/`saving_standby`) or after 60 seconds, including network waits.
+- Publish confirmed startup and cooling states without waiting for input or
+  signal reads. Never resend the power command or guess a successful outcome.
+- Ignore potentially stale SDAP power reports during this short window, while
+  continuing to accept discovery and DHCP address changes. Resume normal SDAP,
+  the existing 60-second watchdog, and configured input/signal refresh afterward.
+- A successful new power command replaces the previous monitoring window;
+  authentication failure and integration unload stop monitoring cleanly.
+- Added the media player's `power_transition` attribute (`on`, `off`, or null)
+  to indicate an active requested transition, independent of confirmed power.
+- Added 19 lifecycle and state-race tests, bringing the suite to 40 tests.
+  Projector hardware validation is pending for this beta.
+
 ## 2.2.4
 
 - Fixed ADCP reply desynchronization after task cancellation, which could expose
