@@ -7,12 +7,20 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import test_device_ownership as ownership
+import voluptuous as vol
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import Context
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError, Unauthorized
 
 from custom_components.sony_adcp import async_setup
 from custom_components.sony_adcp import services as command_services
+
+try:
+    # Current HA compiles action schemas with Probatio; older releases expose
+    # Voluptuous errors. Both reject malformed fields before our handler runs.
+    from probatio.error import Invalid as HaSchemaInvalid
+except ImportError:
+    from voluptuous import Invalid as HaSchemaInvalid
 
 
 class CommandServiceTest(ownership.DeviceOwnershipFixture):
@@ -114,7 +122,7 @@ class CommandServiceTest(ownership.DeviceOwnershipFixture):
             {"device_id": self.device_id, "command": "aspect", "query_type": "execute"},
             {"device_id": "missing", "command": "aspect"},
         ):
-            with self.assertRaises(ServiceValidationError):
+            with self.assertRaises((ServiceValidationError, vol.Invalid, HaSchemaInvalid)):
                 await self.query(data=data, return_response=True)
         self.querier.assert_not_awaited()
 
