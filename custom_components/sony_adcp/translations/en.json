@@ -116,6 +116,12 @@
       }
     },
     "sensor": {
+      "timer_operation": {
+        "name": "Operation hours"
+      },
+      "timer_light_src": {
+        "name": "Light-source hours"
+      },
       "power_status": {
         "name": "Power status"
       },
