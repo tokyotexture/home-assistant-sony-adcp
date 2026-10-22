@@ -101,7 +101,7 @@ class DeviceOwnershipTest(unittest.IsolatedAsyncioTestCase):
         device = self.devices.async_get(self.device_id)
         if not hasattr(device, "config_subentry_id"):
             self.skipTest("Single-owner registry reproduction applies to newer Home Assistant")
-        with patch("homeassistant.helpers.frame.report_usage"):
+        with patch("homeassistant.helpers.device_registry.report_usage"):
             self.devices.async_get_or_create(
                 config_entry_id=self.entry.entry_id,
                 config_subentry_id="sensor-uuid",
@@ -135,7 +135,7 @@ class DeviceOwnershipTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_migration_preserves_sensor_registration_and_reparents_before_delete(self):
         # A beta 1 entity on the shared device, with a user-chosen entity ID/name.
-        with patch("homeassistant.helpers.frame.report_usage"):
+        with patch("homeassistant.helpers.device_registry.report_usage"):
             self.devices.async_get_or_create(
                 config_entry_id=self.entry.entry_id,
                 config_subentry_id="sensor-uuid",
