@@ -4,6 +4,10 @@ All notable changes to Sony ADCP Projector are documented here.
 
 ## Unreleased documentation
 
+- Shorten the README into a quick start, compatibility overview and guide index.
+  Keep detailed update rules in their reference, and move network/authentication,
+  upgrade/troubleshooting and development material into linked guides. Record
+  maintainer-confirmed 2.4 functionality on VPL-VW535; retain the stable/beta split.
 - Add an end-to-end discover → control → monitor guide with complete HA scripts
   and a custom-sensor automation: read aspect ratio, check reported choices before
   setting it, react to known-value changes, and wait for confirmed startup.
