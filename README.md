@@ -217,8 +217,8 @@ turn-on reaches `on`, turn-off reaches `standby` or `saving_standby`, or the
 deadline expires: 60 seconds for startup or 5 minutes for shutdown. Network
 delays count toward that deadline. These are maximums, not minimum monitoring
 periods: standby immediately ends shutdown monitoring. A new successful power
-command replaces the previous monitor; power commands are
-never automatically resent.
+command replaces the previous monitor; the monitor queries status rather than
+repeatedly sending power commands.
 
 During this window, confirmed ADCP readings take priority over potentially
 stale SDAP power announcements. Normal input/signal and picture polling pauses, but DHCP
@@ -233,6 +233,16 @@ otherwise. A cleared transition attribute alone does not prove success: a
 timeout or authentication failure also clears it. Use confirmed power state
 for completion automations. Responses are not optimistic, and startup/cooling
 continue to appear as an on media player until standby is confirmed.
+
+A timeout stops only fast monitoring, not the projector's startup/cooling.
+The last confirmed power is retained and ordinary SDAP/watchdog updates can
+still discover completion later. The initial control action returns after
+acknowledgement; it does not wait up to 60 seconds or 5 minutes. These deadlines
+are independent of Configure's value-refresh options.
+
+See [aggressive polling and timeout behavior](docs/state-updates.md#aggressive-polling-the-sequence)
+for the full sequence, retry/error handling, replacement commands, and what
+happens after monitoring ends.
 
 ### Firmware and usage hours (2.3 beta)
 
