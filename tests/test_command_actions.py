@@ -136,6 +136,7 @@ class CommandActionManagerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.auth, [True])
 
     async def test_readback_failure_does_not_turn_ack_into_write_failure(self):
+        self.manager.async_track_refresh_command("contrast")
         async def exchange(command, **kwargs):
             if "?" in command:
                 raise _protocol.AdcpConnectionError()
@@ -143,6 +144,22 @@ class CommandActionManagerTest(unittest.IsolatedAsyncioTestCase):
         self.client.async_command.side_effect = exchange
         result = await self.manager.async_send_command(request())
         self.assertEqual(result, {"response": "ok", "readback": "failed"})
+
+    async def test_disabled_or_missing_entity_does_not_add_readback(self):
+        result = await self.manager.async_send_command(request())
+        self.assertEqual(result, {"response": "ok", "readback": "not_configured"})
+        self.client.async_command.assert_awaited_once_with("contrast 50", retry=False)
+
+    async def test_transition_started_while_queued_does_not_even_probe_metadata(self):
+        await self.manager._operational_refresh_lock.acquire()
+        task = asyncio.create_task(self.manager.async_send_command(request()))
+        await asyncio.sleep(0)
+        self.manager._power_transition_target = "off"
+        self.manager._operational_refresh_lock.release()
+        with self.assertRaises(CommandValidationError):
+            await task
+        self.client.async_get_command_info.assert_not_awaited()
+        self.client.async_command.assert_not_awaited()
 
     async def test_power_uses_existing_monitor_not_generic_command(self):
         self.manager._async_set_power = AsyncMock()
