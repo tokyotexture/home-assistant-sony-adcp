@@ -19,7 +19,7 @@ from custom_components.sony_adcp.protocol import ProjectorIdentity
 from custom_components.sony_adcp.sensor import async_setup_entry as async_setup_sensors
 
 
-class DeviceOwnershipTest(unittest.IsolatedAsyncioTestCase):
+class DeviceOwnershipFixture(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.hass = HomeAssistant(self.directory.name)
@@ -97,6 +97,8 @@ class DeviceOwnershipTest(unittest.IsolatedAsyncioTestCase):
         for entity in entities:
             self.register(entity, "sensor", config_subentry_id)
 
+
+class DeviceOwnershipTest(DeviceOwnershipFixture):
     async def test_reproduces_beta1_device_move_removing_power_entity(self):
         device = self.devices.async_get(self.device_id)
         if not hasattr(device, "config_subentry_id"):
