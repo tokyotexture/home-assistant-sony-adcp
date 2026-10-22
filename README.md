@@ -373,9 +373,13 @@ perform a hard browser refresh after upgrading.
 
 ## Development
 
-The protocol and SDAP layers have dependency-free offline tests:
+Use Python 3.13 or newer. The offline suite covers protocol/SDAP, power,
+refresh scheduling, sensor conversion and configuration/lifecycle behavior.
+Home Assistant interfaces use a minimal test harness; UI schemas use the real
+Voluptuous library. The integration itself adds no external runtime dependency.
 
 ```bash
+python -m pip install ruff voluptuous
 python -m unittest discover -s tests -v
 ```
 
@@ -384,6 +388,9 @@ Lint the integration with Ruff:
 ```bash
 ruff check .
 ```
+
+CI also runs HACS and Home Assistant Hassfest validation. Automated checks do
+not replace testing model-specific custom commands on a real projector.
 
 Pull requests and projector compatibility reports are welcome. For bugs,
 download diagnostics from the integration page and attach the redacted file to

@@ -20,6 +20,9 @@ All notable changes to Sony ADCP Projector are documented here.
   power changes and expose custom sensors only while fully on with valid data.
 - Document configuration, exact refresh/failure behavior, testing and rollback.
   No stable release or existing power-monitoring defaults are changed.
+- Expand the offline regression suite to 132 tests, including real UI schemas,
+  subentry-only reloads, disabled entities, duplicate queries, cancellation,
+  response parsing, failure isolation and backoff.
 
 ## 2.3.0
 
