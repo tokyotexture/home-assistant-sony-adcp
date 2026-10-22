@@ -107,7 +107,29 @@ async def async_setup_entry(
     )
     entry.runtime_data = SonyAdcpRuntimeData(manager, unsubscribe)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    subentries = _custom_sensor_snapshot(entry)
+
+    async def async_subentries_updated(
+        hass: HomeAssistant, updated_entry: SonyAdcpConfigEntry
+    ) -> None:
+        """Reload only changed subentries, not options or DHCP address updates."""
+        nonlocal subentries
+        updated = _custom_sensor_snapshot(updated_entry)
+        if updated != subentries:
+            subentries = updated
+            await hass.config_entries.async_reload(updated_entry.entry_id)
+
+    entry.async_on_unload(entry.add_update_listener(async_subentries_updated))
     return True
+
+
+def _custom_sensor_snapshot(entry: SonyAdcpConfigEntry) -> dict:
+    """Copy nested data: HA mutates subentry objects when reconfiguring them."""
+    return {
+        key: (subentry.title, dict(subentry.data))
+        for key, subentry in entry.subentries.items()
+        if subentry.subentry_type == "custom_sensor"
+    }
 
 
 async def async_unload_entry(

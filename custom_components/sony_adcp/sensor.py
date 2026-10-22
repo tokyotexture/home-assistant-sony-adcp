@@ -11,12 +11,14 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
+from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import SonyAdcpConfigEntry
+from .custom_commands import CUSTOM_SENSOR, parse_sensor_value
 from .entity import SonyAdcpEntity
 from .manager import ProjectorManager, ProjectorState
 
@@ -73,6 +75,12 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     manager = entry.runtime_data.manager
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type == CUSTOM_SENSOR:
+            async_add_entities(
+                [SonyAdcpCustomSensor(entry, manager, subentry)],
+                config_subentry_id=subentry.subentry_id,
+            )
     async_add_entities(
         SonyAdcpSensor(entry, manager, description) for description in SENSORS
     )
@@ -115,3 +123,52 @@ class SonyAdcpSensor(SonyAdcpEntity, SensorEntity):
     @property
     def native_value(self) -> str | int | None:
         return self.entity_description.value_fn(self._manager.state)
+
+
+class SonyAdcpCustomSensor(SonyAdcpEntity, SensorEntity):
+    """A user-named sensor from a shared, read-only ADCP query."""
+
+    def __init__(
+        self, entry: SonyAdcpConfigEntry, manager: ProjectorManager, subentry: ConfigSubentry
+    ) -> None:
+        super().__init__(entry, manager)
+        self._config = subentry.data
+        self._command = self._config["command"]
+        self._attr_name = subentry.title
+        self._attr_unique_id = f"{entry.unique_id}_custom_{subentry.subentry_id}"
+        self._attr_native_unit_of_measurement = self._config.get("unit") or None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(self._manager.async_track_custom_command(self._command))
+
+    @property
+    def native_value(self) -> str | int | float | None:
+        result = self._manager.custom_results.get(self._command)
+        if result is None or result.response is None or result.error:
+            return None
+        try:
+            return parse_sensor_value(result.response, self._config)
+        except ValueError:
+            return None
+
+    @property
+    def available(self) -> bool:
+        return (
+            super().available
+            and self._manager.state.power_status == "on"
+            and self._manager.power_transition_target is None
+            and self.native_value is not None
+        )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str | None]:
+        result = self._manager.custom_results.get(self._command)
+        error = result.error if result else "not_yet_refreshed"
+        if result and result.response is not None and self.native_value is None:
+            error = "invalid_response"
+        return {
+            "adcp_command": f"{self._command} ?",
+            "json_field": self._config.get("json_field") or None,
+            "last_error": error,
+        }

@@ -25,6 +25,12 @@ from .const import (
     SELECT_COMMANDS,
     SWITCH_COMMANDS,
 )
+from .custom_commands import (
+    CUSTOM_REFRESH_BUDGET,
+    CUSTOM_RETRY_INTERVAL,
+    CustomCommandResult,
+    validate_sensor_config,
+)
 from .discovery import DiscoveredProjector
 from .protocol import (
     AdcpAuthenticationError,
@@ -78,6 +84,10 @@ class ProjectorManager:
         self._picture_commands: dict[str, int] = {}
         self._picture_retry_after: dict[str, float] = {}
         self._picture_revision = 0
+        self.custom_results: dict[str, CustomCommandResult] = {}
+        self._custom_commands: dict[str, int] = {}
+        self._custom_retry_after: dict[str, float] = {}
+        self._custom_cursor = 0
         self._operational_refresh_lock = asyncio.Lock()
         self._operational_refresh_task: asyncio.Task[None] | None = None
         self._power_watchdog_task: asyncio.Task[None] | None = None
@@ -227,6 +237,9 @@ class ProjectorManager:
         """Publish confirmed power without waiting for optional status reads."""
         previous_power = self.state.power_status
         self._power_revision += 1
+        if previous_power != power:
+            self.custom_results.clear()
+            self._custom_retry_after.clear()
         updated = replace(
             self.state,
             power_status=power,
@@ -405,6 +418,7 @@ class ProjectorManager:
                 previous.cancel()
                 await asyncio.gather(previous, return_exceptions=True)
             self._power_revision += 1
+            self.custom_results.clear()
             self._power_transition_target = "on" if power else "off"
             self._power_transition_task = self.hass.async_create_background_task(
                 self._async_power_transition_loop(power),
@@ -577,17 +591,104 @@ class ProjectorManager:
             revision = self._power_revision
             if not self._can_refresh_operational(revision):
                 return
-            source = await self._optional_value("input", self.state.source)
+            results: dict[str, CustomCommandResult] = {}
+            source = await self._optional_value("input", self.state.source, results)
             if not self._can_refresh_operational(revision):
                 return
-            signal = await self._optional_value("signal", self.state.signal)
+            signal = await self._optional_value("signal", self.state.signal, results)
             if not self._can_refresh_operational(revision):
                 return
             updated = replace(self.state, source=source, signal=signal)
             if updated != self.state:
                 self.state = updated
                 self._notify()
-            await self._async_refresh_picture_settings(revision)
+            await self._async_refresh_picture_settings(revision, results)
+            await self._async_refresh_custom_sensors(revision, results)
+
+    @callback
+    def async_track_custom_command(self, command: str) -> Callable[[], None]:
+        """Register only enabled entities; duplicate commands share one query."""
+        validate_sensor_config({"name": command, "command": command})
+        self._custom_commands[command] = self._custom_commands.get(command, 0) + 1
+        removed = False
+
+        @callback
+        def unsubscribe() -> None:
+            nonlocal removed
+            if removed:
+                return
+            removed = True
+            remaining = self._custom_commands.get(command, 0) - 1
+            if remaining > 0:
+                self._custom_commands[command] = remaining
+            else:
+                self._custom_commands.pop(command, None)
+                self.custom_results.pop(command, None)
+                self._custom_retry_after.pop(command, None)
+
+        return unsubscribe
+
+    @callback
+    def _set_custom_result(self, command: str, result: CustomCommandResult) -> None:
+        if command in self._custom_commands and self.custom_results.get(command) != result:
+            self.custom_results[command] = result
+            self._notify()
+
+    async def _async_refresh_custom_sensors(
+        self, power_revision: int, results: dict[str, CustomCommandResult]
+    ) -> None:
+        """Bound custom reads separately, rotating so a slow query cannot starve peers."""
+        commands = tuple(self._custom_commands)
+        if not commands:
+            return
+        if any(result.error == "authentication" for result in results.values()):
+            for command in commands:
+                self._set_custom_result(command, CustomCommandResult(error="authentication"))
+            return
+        start = self._custom_cursor % len(commands)
+        loop = asyncio.get_running_loop()
+        command = ""
+        try:
+            async with asyncio.timeout(CUSTOM_REFRESH_BUDGET):
+                for offset in range(len(commands)):
+                    if not self._can_refresh_operational(power_revision):
+                        return
+                    index = (start + offset) % len(commands)
+                    self._custom_cursor = (index + 1) % len(commands)
+                    command = commands[index]
+                    if command in self._custom_commands and command in results:
+                        if results[command].error:
+                            self._custom_retry_after[command] = loop.time() + CUSTOM_RETRY_INTERVAL
+                        else:
+                            self._custom_retry_after.pop(command, None)
+                        self._set_custom_result(command, results[command])
+                        continue
+                    if (
+                        command not in self._custom_commands
+                        or self._custom_retry_after.get(command, 0) > loop.time()
+                    ):
+                        continue
+                    try:
+                        response = await self.client.async_command(f"{command} ?")
+                    except AdcpAuthenticationError:
+                        self._set_custom_result(
+                            command, CustomCommandResult(error="authentication")
+                        )
+                        self._auth_failed()
+                        return
+                    except AdcpError:
+                        self._custom_retry_after[command] = loop.time() + CUSTOM_RETRY_INTERVAL
+                        self._set_custom_result(command, CustomCommandResult(error="query_failed"))
+                        continue
+                    if not self._can_refresh_operational(power_revision):
+                        return
+                    self._custom_retry_after.pop(command, None)
+                    self._set_custom_result(command, CustomCommandResult(response=response))
+        except TimeoutError:
+            if self._can_refresh_operational(power_revision):
+                self._custom_retry_after[command] = loop.time() + CUSTOM_RETRY_INTERVAL
+                self._set_custom_result(command, CustomCommandResult(error="timeout"))
+            _LOGGER.debug("Custom sensor refresh budget exhausted while reading %s", command)
 
     def _can_refresh_operational(self, revision: int) -> bool:
         return (
@@ -599,7 +700,9 @@ class ProjectorManager:
             and self.state.available
         )
 
-    async def _async_refresh_picture_settings(self, power_revision: int) -> None:
+    async def _async_refresh_picture_settings(
+        self, power_revision: int, results: dict[str, CustomCommandResult]
+    ) -> None:
         """Bound optional reads so slow settings cannot monopolize ADCP."""
         if not self._refresh_picture_settings:
             return
@@ -625,9 +728,11 @@ class ProjectorManager:
                     try:
                         value = await self.client.async_command(f"{command} ?")
                     except AdcpAuthenticationError:
+                        results[command] = CustomCommandResult(error="authentication")
                         self._auth_failed()
                         return
                     except AdcpError:
+                        results[command] = CustomCommandResult(error="query_failed")
                         self._picture_retry_after[command] = (
                             loop.time() + PICTURE_REFRESH_RETRY_INTERVAL
                         )
@@ -641,21 +746,33 @@ class ProjectorManager:
                     if command not in self._picture_commands:
                         continue
                     self._picture_retry_after.pop(command, None)
+                    results[command] = CustomCommandResult(response=value)
                     if self.state.values.get(command) != value:
                         values = {**self.state.values, command: value}
                         self.state = replace(self.state, values=values)
                         self._notify()
         except TimeoutError:
+            results[command] = CustomCommandResult(error="timeout")
             self._picture_retry_after[command] = loop.time() + PICTURE_REFRESH_RETRY_INTERVAL
             _LOGGER.debug("Picture refresh budget exhausted while reading %s", command)
 
-    async def _optional_value(self, command: str, previous: str | None) -> str | None:
+    async def _optional_value(
+        self, command: str, previous: str | None,
+        results: dict[str, CustomCommandResult] | None = None,
+    ) -> str | None:
         try:
-            return (await self.client.async_command(f"{command} ?")).lower()
+            response = await self.client.async_command(f"{command} ?")
+            if results is not None:
+                results[command] = CustomCommandResult(response=response)
+            return response.lower()
         except AdcpAuthenticationError:
+            if results is not None:
+                results[command] = CustomCommandResult(error="authentication")
             self._auth_failed()
             return previous
         except AdcpError:
+            if results is not None:
+                results[command] = CustomCommandResult(error="query_failed")
             return previous
 
     async def _optional_list(
