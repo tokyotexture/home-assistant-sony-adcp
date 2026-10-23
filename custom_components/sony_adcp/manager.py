@@ -19,6 +19,7 @@ from .const import (
     NUMBER_COMMANDS,
     PICTURE_REFRESH_BUDGET,
     PICTURE_REFRESH_RETRY_INTERVAL,
+    PICTURE_STARTUP_RECOVERY_WINDOW,
     POWER_OFF_STATES,
     POWER_OFF_TRANSITION_TIMEOUT,
     POWER_ON_TRANSITION_TIMEOUT,
@@ -98,6 +99,7 @@ class ProjectorManager:
         self._picture_pending_reads: set[str] = set()
         self._picture_readable: set[str] = set()
         self._picture_retry_after: dict[str, float] = {}
+        self._picture_startup_until = 0.0
         self._picture_revision = 0
         self.custom_results: dict[str, CustomCommandResult] = {}
         self._custom_commands: dict[str, int] = {}
@@ -287,6 +289,10 @@ class ProjectorManager:
             self._custom_retry_after.clear()
             self._picture_retry_after.clear()
             self._capability_retry_after = 0.0
+            self._picture_startup_until = (
+                asyncio.get_running_loop().time() + PICTURE_STARTUP_RECOVERY_WINDOW
+                if power == "on" else 0.0
+            )
             if power == "on":
                 self._picture_pending_reads.update(self._picture_commands)
         updated = replace(
@@ -800,7 +806,10 @@ class ProjectorManager:
             if updated != self.state:
                 self.state = updated
                 self._notify()
-            await self._async_refresh_picture_settings(revision, results)
+            # Finish the initial on-read even if recurring picture refresh is off.
+            await self._async_refresh_picture_settings(
+                revision, results, initial=not self._refresh_picture_settings,
+            )
             await self._async_refresh_custom_sensors(revision, results)
 
     @callback
@@ -904,6 +913,17 @@ class ProjectorManager:
             and self.state.available
         )
 
+    def _picture_retry_delay(self, error: AdcpError) -> float:
+        """Retry temporary startup inactivity on the existing configured cadence."""
+        if (
+            isinstance(error, AdcpCommandError)
+            and error.response.lower() == "err_inactive"
+            and asyncio.get_running_loop().time() < self._picture_startup_until
+            and self._operational_refresh_interval > 0
+        ):
+            return min(self._operational_refresh_interval, PICTURE_REFRESH_RETRY_INTERVAL)
+        return PICTURE_REFRESH_RETRY_INTERVAL
+
     async def _async_refresh_picture_settings(
         self, power_revision: int, results: dict[str, CustomCommandResult], *, initial: bool = False
     ) -> None:
@@ -932,7 +952,8 @@ class ProjectorManager:
                         or (initial and command not in self._picture_pending_reads)
                         or (not initial and command not in self.command_info
                             and command not in self.state.values
-                            and command not in self._picture_readable)
+                            and command not in self._picture_readable
+                            and command not in self._picture_pending_reads)
                         or self._picture_retry_after.get(command, 0) > loop.time()
                     ):
                         continue
@@ -945,13 +966,21 @@ class ProjectorManager:
                         self._clear_picture_value(command)
                         self._auth_failed()
                         return
-                    except AdcpError:
+                    except AdcpError as error:
                         if not self._can_refresh_operational(power_revision):
                             return
                         results[command] = CustomCommandResult(error="query_failed")
                         self._clear_picture_value(command)
-                        self._picture_retry_after[command] = (
-                            loop.time() + PICTURE_REFRESH_RETRY_INTERVAL
+                        retry_delay = self._picture_retry_delay(error)
+                        self._picture_retry_after[command] = loop.time() + retry_delay
+                        # Log protocol errors, never returned setting values.
+                        reason = (
+                            error.response if isinstance(error, AdcpCommandError)
+                            else type(error).__name__
+                        )
+                        _LOGGER.debug(
+                            "Picture setting %s read failed (%s); retry eligible in %s seconds",
+                            command, reason, retry_delay,
                         )
                         continue
                     if (
