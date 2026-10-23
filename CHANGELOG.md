@@ -2,6 +2,27 @@
 
 All notable changes to Sony ADCP Projector are documented here.
 
+## 2.4.1b2 — 2026-10-23 (prerelease)
+
+- Retry picture-setting `err_inactive` replies at the configured 5/10/30-second
+  interval during the first 60 seconds after confirmed `on`. Do not turn a brief
+  startup rejection into a mandatory 60-second per-setting backoff. Repeated
+  `on` announcements do not extend the window. Persistent inactivity after the
+  window, unsupported commands, connection failures and timeouts retain the
+  existing 60-second backoff and two-second picture batch budget.
+- Finish pending initial picture reads on the existing configured loop even
+  with Include picture settings off; stop reading each control after its first
+  success in that mode. Disabled polling stays disabled: pending initial reads
+  retry on eligible core refreshes, without creating another polling task.
+- Log failed built-in picture reads and their retry eligibility at debug level
+  without logging successful setting values. Add six startup-recovery regressions
+  and document timing and physical-projector checks. Custom-sensor retry rules,
+  fast power monitoring and stable v2.4.0 remain unchanged.
+- Maintainer beta 1 hardware feedback on VPL-VW535, firmware 5.003 confirmed
+  shutdown unavailability, standby-restart entity persistence, automatic recovery
+  and a successful Brightness write. Beta 2 needs a new startup timing test;
+  the exact cause of the observed one-minute beta 1 delay is not yet proven.
+
 ## 2.4.1b1 — 2026-10-23 (prerelease)
 
 - Preserve positively discovered built-in command metadata in the projector's
