@@ -2,6 +2,25 @@
 
 All notable changes to Sony ADCP Projector are documented here.
 
+## 2.4.1b1 — 2026-10-23 (prerelease)
+
+- Preserve positively discovered built-in command metadata in the projector's
+  config entry. Numeric controls keep their existing entity IDs after a reload
+  or HA restart in standby, rather than appearing as "no longer provided".
+  Cache only capabilities, never operational values; reject corrupt ranges and
+  metadata from a known different model/serial/MAC identity.
+- Picture controls are unavailable while off, starting/cooling, undergoing a
+  commanded transition, or awaiting a successful read. Clear stale readings on
+  power changes and failed reads without removing the entity. Perform an initial
+  read after confirmed startup even with periodic picture refresh disabled.
+- Probe capabilities only while fully on. Preserve successful partial results,
+  retry inactive/transport/malformed replies on the existing 60-second watchdog,
+  and distinguish explicit unsupported commands from temporary failures. Bound
+  each discovery pass to 15 seconds and rotate pending commands after timeouts.
+- Add offline and real Home Assistant lifecycle/registry regressions. Keep stable
+  v2.4.0 unchanged. After upgrading, turn the projector on once to seed the new
+  metadata cache; 2.4.0 did not persist capabilities and cannot supply that cache.
+
 ## 2.4.0 — 2026-10-22
 
 - Stable release of the tested 2.4 betas. The maintainer confirmed Query/Send

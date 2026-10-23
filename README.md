@@ -43,6 +43,14 @@ Control power and inputs, see projector status, and build automations around
 your display. The integration uses Sony's local ADCP/SDAP protocols and presents
 the projector as a Home Assistant `media_player`—not a streaming player.
 
+> **2.4.1b1 testing:** this branch preserves known picture controls across
+> restarts while the projector is off. In HACS, enable **Show beta versions**,
+> select **v2.4.1b1** through **Redownload**, and restart HA. Turn the projector
+> on once to learn and save its capabilities, then test an HA restart in standby.
+> Controls should remain present but unavailable, and recover when fully on.
+> See the [beta test checklist](docs/state-updates.md#241-beta-testing).
+> Stable **v2.4.0** is unchanged.
+
 > **New in 2.4:** custom sensors and Query/Send ADCP actions are now stable.
 > Update through HACS and restart Home Assistant; prerelease versions are not
 > required. See the [changelog](CHANGELOG.md) and [upgrade guide](docs/setup-and-troubleshooting.md#upgrading).
