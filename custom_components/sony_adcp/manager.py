@@ -369,11 +369,13 @@ class ProjectorManager:
         try:
             value = await self.client.async_command(f"{command} ?")
         except AdcpAuthenticationError:
-            self._clear_picture_value(command)
+            if self._can_read_picture(revision):
+                self._clear_picture_value(command)
             self._auth_failed()
             return None
         except AdcpError:
-            self._clear_picture_value(command)
+            if self._can_read_picture(revision):
+                self._clear_picture_value(command)
             return None
         if not self._can_read_picture(revision):
             return None
@@ -937,11 +939,15 @@ class ProjectorManager:
                     try:
                         value = await self.client.async_command(f"{command} ?")
                     except AdcpAuthenticationError:
+                        if not self._can_refresh_operational(power_revision):
+                            return
                         results[command] = CustomCommandResult(error="authentication")
                         self._clear_picture_value(command)
                         self._auth_failed()
                         return
                     except AdcpError:
+                        if not self._can_refresh_operational(power_revision):
+                            return
                         results[command] = CustomCommandResult(error="query_failed")
                         self._clear_picture_value(command)
                         self._picture_retry_after[command] = (
@@ -967,6 +973,8 @@ class ProjectorManager:
                         self.state = replace(self.state, values=values)
                         self._notify()
         except TimeoutError:
+            if not self._can_refresh_operational(power_revision):
+                return
             results[command] = CustomCommandResult(error="timeout")
             self._clear_picture_value(command)
             self._picture_retry_after[command] = loop.time() + PICTURE_REFRESH_RETRY_INTERVAL
