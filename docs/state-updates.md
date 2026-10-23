@@ -1,7 +1,20 @@
 # How values update
 
-This reference describes **v2.3.0**, the stable release of the functionality
-tested in the 2.3 betas. It does not describe the older v2.2.4 behavior.
+This reference describes stable **v2.4.0**, including the v2.3.0 behavior plus
+[custom ADCP sensors](custom-sensors.md). Older v2.3.0 does not
+include custom sensors or the [Send/Query ADCP command actions](custom-commands.md).
+
+The [Query ADCP command](custom-commands.md#query-current-values) returns a
+fresh value, range or metadata to its caller. It never changes entity state or
+the update triggers listed below. It works with periodic refresh Disabled but
+is rejected during fast power monitoring, with a 30-second whole-action deadline.
+Power timings are unchanged. Version 2.4 adds immediate matching-entity readback after
+acknowledged readable custom writes; it does not add another polling loop.
+
+For copyable scripts and a state-change automation, see [Discover, control and
+monitor your projector](automation-examples.md). It distinguishes one-off query
+responses from custom sensor monitoring, including startup waits and unavailable
+states. Custom sensor changes are detected through scheduled ADCP reads, not SDAP.
 
 The integration uses one shared asynchronous ADCP client. Entities display its
 cached values; they do not each run their own polling loop. SDAP announcements
@@ -20,12 +33,14 @@ hour counters. Those values require ADCP queries.
 
 ## Refresh options
 
-Open **Settings → Devices & services → Sony ADCP Projector → Configure**.
+Open **Settings → Devices & services → Sony ADCP Projector → Configure → Refresh settings**.
+Manage named queries separately through **Configure → Custom sensors**; they stay
+under the parent projector's ownership, rather than creating subentries.
 
 | Option | Default / choices | Exactly what it controls |
 | --- | --- | --- |
-| Refresh interval (`operational_refresh_interval`) | 10 seconds; Disabled (`0`), 5, 10, or 30 seconds | The dedicated loop for input, signal, and optionally the eight picture controls listed below. Runs only while the projector is available and fully `on`. Pauses during fast power-transition monitoring. |
-| Include picture settings (`refresh_picture_settings`) | On, including existing installations | Adds supported, enabled picture controls to that same loop. Off leaves only input and signal in the loop. Has no effect if the interval is Disabled. |
+| Refresh interval (`operational_refresh_interval`) | 10 seconds; Disabled (`0`), 5, 10, or 30 seconds | The dedicated loop for input, signal, enabled custom sensors, and optionally the eight picture controls listed below. Runs only while the projector is available and fully `on`. Pauses during fast power-transition monitoring. |
+| Include picture settings (`refresh_picture_settings`) | On, including existing installations | Adds supported, enabled picture controls to that same loop. Off leaves input, signal and custom sensors in the loop. Has no effect if the interval is Disabled. |
 
 Changes apply without reloading. These options do **not** change the SDAP
 advertisement interval, the independent power watchdog, fast power-monitoring
@@ -33,11 +48,11 @@ deadlines, setup reads, command readbacks, error/warning snapshots, or usage-hou
 triggers. Those timings are not configurable in this UI.
 
 **Disabled does not mean no ADCP queries.** It stops the dedicated configurable
-loop, including all periodic picture reads. The independent power watchdog
+loop, including all periodic picture and custom-sensor reads. The independent power watchdog
 still checks power about every 60 seconds and reads input/signal if fully on.
 Event-triggered input/signal reads and direct control readbacks also remain.
 Disabling the Signal entity alone does not suppress the shared input/signal
-queries; enabled-entity filtering applies to the optional picture controls.
+queries; enabled-entity filtering applies to the optional picture controls and custom sensors.
 
 ## Entity and value reference
 
@@ -55,7 +70,7 @@ For the table:
   announcements do not themselves trigger new ADCP queries.
 - **Configured refresh** means the loop controlled by Refresh interval, subject
   to the power/availability conditions above. It reads input/signal first, then
-  eligible picture controls if Include picture settings is on.
+  eligible picture controls if Include picture settings is on, then enabled custom sensors.
 - **Initial control read** means a query when an enabled control entity is added
   to Home Assistant, including after integration setup/reload. It is attempted
   even if the projector is not on, but the projector may reject it then.
@@ -82,6 +97,7 @@ For the table:
 | Warnings diagnostic sensor | `warning ?` | Same setup-only behavior as Errors. Not part of either periodic loop or shutdown refresh. |
 | Operation hours diagnostic sensor | `timer ?` → `operation` | One shared counter read at setup and on a transition from a known non-standby state into `standby`/`saving_standby`. Also retry on transitions to `on` while no counters are known, unless the command is known unsupported. No periodic refresh. |
 | Light-source hours diagnostic sensor | `timer ?` → `light_src` | Same shared read and triggers as Operation hours. Only returned counters get sensors. |
+| User-named custom sensor | Configured command name + ` ?` | Configured refresh when enabled, available and fully on, outside fast power monitoring. Also reads a matching enabled sensor once after an acknowledged readable custom action or matching built-in setting write, while fully on, even when periodic refresh is Disabled. Independent of Include picture settings. Deduplicated per command/cycle, with a separate two-second periodic batch budget, rotation and 60-second query-failure backoff. Unavailable until a valid read and while off/transitioning. Power changes clear caches. JSON conversion errors affect only that sensor. See [full rules and configuration](custom-sensors.md) and [custom action readback](custom-commands.md#acknowledgements-readback-and-failures). |
 
 Numeric entities are created only when the projector reports a minimum and
 maximum for that command. Picture mode and Video mute are offered but may be
@@ -271,8 +287,11 @@ Reality Creation noise filtering, then Video mute.
 Only supported picture commands with enabled entities are included. All picture
 reads together have a **two-second budget**, including connection/lock waits;
 this budget does not cover the preceding input/signal queries. With all eight
-picture controls eligible, a cycle attempts up to ten value queries, not ten new
-connections. A slow projector may not reach every control in each cycle.
+picture controls eligible, the built-in portion attempts up to ten value queries,
+not ten new connections. A slow projector may not reach every control in each cycle.
+Enabled custom sensors follow, with their own two-second total budget and
+60-second query-failure backoff. Duplicate commands reuse one response per cycle.
+See [custom-sensor timing and failure rules](custom-sensors.md#exactly-when-readings-update).
 
 A failed picture read keeps its last known value and backs that command off for
 at least **60 seconds**. Other controls can still be read within the remaining
@@ -382,7 +401,10 @@ It does **not** query the projector or make stale values fresh.
   delay, empty/unknown values outside `on`, failed reads, and network availability.
   No selected interval guarantees a precise timestamp for physical signal lock.
 
-Arbitrary custom-command sensors (`custom1`, `custom2`, and similar) are not
-implemented. Only the values and controls listed here are managed.
+Version 2.4 adds named, read-only [custom-command sensors](custom-sensors.md),
+not fixed custom1/custom2 slots. They use the configured refresh loop, never
+the power monitor. It also adds a separate [structured write action](custom-commands.md)
+and immediate matching-entity readback after successful readable writes. No raw
+protocol strings or executable response templates are provided.
 
 [Back to the README](../README.md#state-updates)

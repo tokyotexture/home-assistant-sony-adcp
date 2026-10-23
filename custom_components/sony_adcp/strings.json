@@ -66,20 +66,94 @@
   "options": {
     "step": {
       "init": {
+        "title": "Projector configuration",
+        "menu_options": {
+          "refresh": "Refresh settings",
+          "custom_sensors": "Custom sensors"
+        }
+      },
+      "custom_sensors": {
+        "title": "Custom sensors",
+        "description": "Named, read-only ADCP values share the projector's refresh interval and device. Adding, editing or removing a sensor reloads the integration without removing power controls.",
+        "menu_options": {
+          "add_sensor": "Add custom sensor",
+          "edit_sensor": "Edit custom sensor",
+          "remove_sensor": "Remove custom sensor"
+        }
+      },
+      "sensor": {
+        "title": "Custom ADCP sensor",
+        "description": "Enter a command name without arguments or ?. Read-only queries run at the configured interval while fully on. Saving reloads the integration; model support is checked at the next refresh. [Custom sensor documentation]({documentation_url})",
+        "data": {
+          "name": "Sensor name",
+          "command": "ADCP command",
+          "value_type": "Value type",
+          "json_field": "JSON field path (optional)",
+          "unit": "Unit (numeric sensors only)"
+        },
+        "data_description": {
+          "command": "Lowercase command name, for example aspect. The integration appends ?; commands cannot set values.",
+          "json_field": "Leave empty for the whole response. For JSON, use dot-separated keys and zero-based array indexes, for example 0.main.",
+          "unit": "Optional display unit such as %. No device class or statistics type is inferred."
+        }
+      },
+      "edit_sensor": {
+        "title": "Edit custom sensor",
+        "data": {
+          "sensor_id": "Sensor"
+        }
+      },
+      "remove_sensor": {
+        "title": "Remove custom sensor",
+        "data": {
+          "sensor_id": "Sensor"
+        }
+      },
+      "confirm_remove": {
+        "title": "Remove custom sensor?",
+        "description": "Remove {name}? Only this custom sensor is removed. Projector power and other controls are kept."
+      },
+      "refresh": {
         "title": "Projector status refresh",
-        "description": "Choose how often to refresh input, signal, and optional picture settings while the projector is fully on. Normal refresh pauses during fast power-transition monitoring.",
+        "description": "Choose how often to refresh input, signal, custom sensors, and optional picture settings while fully on. Normal refresh pauses during fast power monitoring.",
         "data": {
           "operational_refresh_interval": "Refresh interval",
           "refresh_picture_settings": "Include picture settings"
         },
         "data_description": {
-          "operational_refresh_interval": "Changes apply immediately. Disabled stops periodic input, signal, and picture-setting checks, but not SDAP or power monitoring.",
-          "refresh_picture_settings": "Refresh supported, enabled picture controls at the same interval: picture mode, sharpness, brightness, contrast, light output, Reality Creation, and video mute. Off keeps input and signal refresh only."
+          "operational_refresh_interval": "Changes apply immediately. Disabled stops periodic input, signal, picture-setting and custom-sensor checks, but not SDAP or power monitoring.",
+          "refresh_picture_settings": "Refresh supported, enabled picture controls at the same interval: picture mode, sharpness, brightness, contrast, light output, Reality Creation, and video mute. Off keeps input, signal and custom-sensor refresh."
         }
       }
+    },
+    "error": {
+      "invalid_name": "Enter a name between 1 and 100 characters",
+      "invalid_command": "Use a lowercase command name only: letters, digits and underscores, starting with a letter (maximum 64 characters). Do not include spaces, arguments or ?.",
+      "invalid_value_type": "Choose text or number",
+      "invalid_json_field": "Use dot-separated keys or array indexes (maximum 128 characters), or leave empty",
+      "invalid_unit": "Units require a numeric sensor and must be 30 characters or fewer"
+    },
+    "abort": {
+      "too_many_sensors": "A projector can have at most 32 custom sensors. Remove one before adding another.",
+      "sensor_not_found": "This sensor no longer exists. Open Configure again."
     }
   },
   "selector": {
+    "command_operation": {
+      "options": {
+        "set": "Set value",
+        "relative": "Adjust relatively",
+        "reset": "Reset setting",
+        "execute": "Execute command"
+      }
+    },
+    "command_query_type": {
+      "options": {
+        "value": "Current value",
+        "range": "Allowed values / range",
+        "info": "Command information"
+      }
+    },
     "operational_refresh_interval": {
       "options": {
         "0": "Disabled",
@@ -88,6 +162,25 @@
         "30": "Every 30 seconds"
       }
     }
+  },
+  "exceptions": {
+    "command_name_invalid": {"message": "Enter one lowercase ADCP command name without arguments or options."},
+    "command_operation_invalid": {"message": "This operation is not supported for the command. Use explicit power on/off instead of the power-toggle key."},
+    "command_value_invalid": {"message": "The value is invalid, outside the reported range, or not a supported choice. Use the exact case reported by Sony; quote on/off strings in YAML."},
+    "command_value_unexpected": {"message": "Omit the value field for Reset and Execute operations."},
+    "command_metadata_required": {"message": "The projector did not provide command metadata. No write was sent. Check model support and try while fully on."},
+    "command_type_unsupported": {"message": "Only ordinary menu settings, execution commands, remote keys and explicit power are supported. Network settings and advanced calibration are excluded."},
+    "command_device_invalid": {"message": "Select an existing Sony ADCP projector device."},
+    "command_not_ready": {"message": "The projector integration is not loaded, is unloading, or its power state changed before sending. Try again after it is ready."},
+    "command_during_transition": {"message": "Wait for the power transition to finish before sending other commands."},
+    "command_rejected": {"message": "The projector rejected the command: {response}. No automatic retry was made."},
+    "command_authentication": {"message": "Projector authentication failed. Complete reauthentication in the integration."},
+    "command_outcome_unknown": {"message": "No valid acknowledgement was received before the connection or deadline ended. The command may have executed and was not automatically resent. Check projector state before repeating it."},
+    "command_connection": {"message": "Unable to communicate with the projector. Check its address, network-management setting and connection."},
+    "query_type_invalid": {"message": "Choose Current value, Allowed values / range, or Command information. Queries cannot include a value or write operation."},
+    "query_stale": {"message": "The projector power state changed during this query. Try again after it is ready."},
+    "query_timeout": {"message": "The read-only query exceeded its 30-second deadline, including connection and queue waits. Try again when the projector is ready."},
+    "query_rejected": {"message": "The projector rejected the query: {response}. Check command support and try while fully on."}
   },
   "entity": {
     "number": {

@@ -2,6 +2,131 @@
 
 All notable changes to Sony ADCP Projector are documented here.
 
+## 2.4.0 — 2026-10-22
+
+- Stable release of the tested 2.4 betas. The maintainer confirmed Query/Send
+  ADCP actions and custom sensors on Sony VPL-VW535, firmware 5.003. Support for
+  individual commands and choices still varies by model and input.
+- Add named, read-only custom sensors through Configure → Custom sensors,
+  with optional JSON fields and numeric units. Reuse the shared async client
+  and configured refresh interval while fully on, with deduplication, bounded
+  batches, error backoff and unavailable-state handling.
+- Add administrator-only `sony_adcp.query_command` for current values, allowed
+  values/ranges and command information, returning responses to Developer Tools
+  and scripts. Add `sony_adcp.send_command` for structured Set, Relative, Reset,
+  Execute and remote-key operations with metadata/type/range/case validation.
+- Preserve explicit power monitoring, never automatically replay writes after
+  lost replies, and immediately read back matching enabled sensors/controls
+  after acknowledged readable writes. Bound custom actions to 30 seconds and
+  cancel them on unload; reject non-power actions during fast power monitoring.
+- Include the beta 2 device-ownership fix and automatic migration of remaining
+  beta 1 sensors; preserve projector power controls and existing registrations.
+- Promote the beta 4 runtime unchanged apart from the version identifier;
+  retain all 2.3 power-transition, picture-refresh and usage-hour behavior.
+
+- Shorten the README into a quick start, compatibility overview and guide index.
+  Keep detailed update rules in their reference, and move network/authentication,
+  upgrade/troubleshooting and development material into linked guides. Record
+  maintainer-confirmed 2.4 functionality on VPL-VW535 and document stable upgrades.
+- Add an end-to-end discover → control → monitor guide with complete HA scripts
+  and a custom-sensor automation: read aspect ratio, check reported choices before
+  setting it, react to known-value changes, and wait for confirmed startup.
+- Clarify action response versus entity state, device/entity ID placeholders,
+  exact-case/model-specific support, polling/freshness limits, unavailable-state
+  guards and unsupported raw/network/calibration commands. Historical beta tags
+  remain unchanged.
+- Validate the guide's copyable YAML, action payloads and choice/startup/state
+  guards against real Home Assistant schemas and template rendering in CI.
+
+## 2.4.0b4 (prerelease)
+
+- Add the admin-only, response-returning `sony_adcp.query_command` action for
+  current values (for example `aspect`), allowed values/ranges and command info.
+  Keep queries separate from write-only Execute operations; accept command names
+  only and generate every read-only protocol suffix internally.
+- Return the normalized projector reply plus structured JSON objects/arrays,
+  preserving scalar strings and exact-case choices. Current-value reads require
+  no metadata or custom sensor. Every call is fresh, with no entity-cache updates,
+  new entities, polling tasks or refresh-option changes.
+- Share authenticated async communication and locks. Bound the entire action to
+  30 seconds, pause access during fast power monitoring, discard replies after
+  power changes and cancel pending queries on unload. Try alternate Sony metadata
+  syntax only on command/option rejection, not inactive/authentication/IO failures.
+- Document official Sony aspect queries, script response variables and discovering
+  model-specific color-temperature choices. Add query encoding/lifecycle and real
+  HA service registration, permissions, response and deadline regressions.
+- Retain beta 2's ownership fix and beta 3's structured writes/readback. Stable
+  v2.3.0 remains unchanged; new query behavior needs real-projector beta testing.
+
+## 2.4.0b3 (prerelease)
+
+- Add the admin-only `sony_adcp.send_command` action for existing projector
+  devices. Support structured Set, Relative, Reset and Execute operations plus
+  single remote keys, with an optional acknowledgement/readback response.
+- Require recognized menu-command metadata, validate exact-case choices,
+  numeric ranges and steps, and reject raw command lines and advanced/network
+  writes. Cache successful metadata only. Explicit power and power keys retain
+  the existing fast monitor; reject ambiguous power toggles and non-power writes
+  during monitored transitions. Cancel active custom actions on unload.
+- Read back matching enabled custom sensors and picture controls immediately
+  after acknowledged readable writes, even with periodic refresh disabled.
+  Keep acknowledgements distinct from completion and readback errors.
+- Never automatically replay writes after connection failures, including
+  built-in controls; reads retain reconnect/retry behavior. Close cancelled or
+  uncertain streams and surface authentication failures through reauth.
+- Document actual Sony command names, exact messages, model-specific choices,
+  setting reset versus execution, and non-destructive test suggestions in
+  `docs/custom-commands.md`, citing the official Sony manual and printed pages.
+- Add offline action/transport regressions and real HA service registration,
+  permission, routing, response and deadline tests. Retain the beta 2 ownership
+  fix, automatic beta 1 migration and stable v2.3.0 release unchanged.
+
+## 2.4.0b2 (prerelease)
+
+- Fix custom sensors making the projector's media-player/power control disappear.
+  Keep all sensors and controls owned by the existing projector configuration;
+  stop assigning the shared physical device to individual sensor subentries.
+- Move add/edit/remove into **Configure → Custom sensors** with a removal
+  confirmation. Move refresh options into **Configure → Refresh settings**.
+  Remove the separate subentry action (which could appear as an unlabeled +).
+- Automatically migrate remaining beta 1 sensor settings and IDs on restart.
+  Reparent entity registrations before devices, then remove obsolete subentries;
+  preserve existing registrations, names and options where still present. Support
+  both legacy shared-device and newer single-owner registry APIs. Already-deleted
+  beta 1 registry customizations cannot be reconstructed.
+- Remove only intentionally deleted custom sensor registrations on reload,
+  never the projector media player or other built-in controls.
+- Add real Home Assistant device/entity registry tests on the minimum supported
+  and current versions, including reproduction of the beta 1 ownership bug,
+  add/edit/remove preservation and safe, idempotent migration.
+- Fall back to the TV media-player class on older supported Home Assistant
+  versions that do not yet expose a projector class, preventing a platform import
+  failure. Newer versions retain the projector class.
+- Power polling, refresh budgets, query backoff and all other beta 1 functionality
+  are unchanged. Stable v2.3.0 remains the latest stable release.
+
+## 2.4.0b1 (prerelease)
+
+- Added named, read-only custom ADCP sensors as Home Assistant configuration
+  subentries: add/edit/remove under an existing projector, with stable entity
+  identity, text/numeric output, optional JSON field path and numeric unit.
+- Validate command names and always append a query marker. Reject arguments,
+  command sequences and templates. Up to 32 sensors per projector.
+- Share the operational refresh interval, enabled-entity filtering and existing
+  serialized ADCP client. Duplicate commands share a response per cycle,
+  including eligible built-in reads. Custom sensors are independent of the
+  Include picture settings checkbox.
+- Bound custom queries to two seconds per cycle, rotate after interrupted
+  batches, and back off failed queries for 60 seconds. Isolate query/conversion
+  failures, handle reauthentication and discard stale/removed in-flight values.
+- Pause custom reads during power transitions; invalidate caches on confirmed
+  power changes and expose custom sensors only while fully on with valid data.
+- Document configuration, exact refresh/failure behavior, testing and rollback.
+  No stable release or existing power-monitoring defaults are changed.
+- Expand the offline regression suite to 132 tests, including real UI schemas,
+  subentry-only reloads, disabled entities, duplicate queries, cancellation,
+  response parsing, failure isolation and backoff.
+
 ## 2.3.0
 
 - Promoted the tested 2.3 beta functionality to a stable release after maintainer

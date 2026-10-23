@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
@@ -10,6 +11,7 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant, callback
 
+from .command_request import CommandRequest, CommandValidationError, QueryRequest
 from .const import (
     DEFAULT_REFRESH_PICTURE_SETTINGS,
     DEFAULT_SOURCES,
@@ -25,12 +27,19 @@ from .const import (
     SELECT_COMMANDS,
     SWITCH_COMMANDS,
 )
+from .custom_commands import (
+    CUSTOM_REFRESH_BUDGET,
+    CUSTOM_RETRY_INTERVAL,
+    CustomCommandResult,
+    validate_sensor_config,
+)
 from .discovery import DiscoveredProjector
 from .protocol import (
     AdcpAuthenticationError,
     AdcpClient,
     AdcpCommandError,
     AdcpError,
+    AdcpOutcomeUnknownError,
     CommandInfo,
     ProjectorIdentity,
 )
@@ -78,6 +87,10 @@ class ProjectorManager:
         self._picture_commands: dict[str, int] = {}
         self._picture_retry_after: dict[str, float] = {}
         self._picture_revision = 0
+        self.custom_results: dict[str, CustomCommandResult] = {}
+        self._custom_commands: dict[str, int] = {}
+        self._custom_retry_after: dict[str, float] = {}
+        self._custom_cursor = 0
         self._operational_refresh_lock = asyncio.Lock()
         self._operational_refresh_task: asyncio.Task[None] | None = None
         self._power_watchdog_task: asyncio.Task[None] | None = None
@@ -89,6 +102,9 @@ class ProjectorManager:
         self._timers_initialized = False
         self._timers_supported: bool | None = None
         self._power_command_lock = asyncio.Lock()
+        self._command_action_lock = asyncio.Lock()
+        self._command_action_tasks: set[asyncio.Task] = set()
+        self._action_command_info: dict[str, CommandInfo] = {}
         self._power_revision = 0
         self._closed = False
         self._availability_timer: asyncio.TimerHandle | None = None
@@ -227,6 +243,9 @@ class ProjectorManager:
         """Publish confirmed power without waiting for optional status reads."""
         previous_power = self.state.power_status
         self._power_revision += 1
+        if previous_power != power:
+            self.custom_results.clear()
+            self._custom_retry_after.clear()
         updated = replace(
             self.state,
             power_status=power,
@@ -299,6 +318,7 @@ class ProjectorManager:
                 self._notify()
 
     async def async_read_command(self, command: str) -> str | None:
+        revision = self._power_revision
         try:
             value = await self.client.async_command(f"{command} ?")
         except AdcpAuthenticationError:
@@ -306,9 +326,14 @@ class ProjectorManager:
             return None
         except AdcpError:
             return None
+        if self._closed or revision != self._power_revision:
+            return None
         values = dict(self.state.values)
         values[command] = value
         self.state = replace(self.state, values=values, available=True)
+        if self.state.power_status == "on" and self._power_transition_target is None:
+            self._custom_retry_after.pop(command, None)
+            self._set_custom_result(command, CustomCommandResult(response=value))
         self._notify()
         return value
 
@@ -405,6 +430,7 @@ class ProjectorManager:
                 previous.cancel()
                 await asyncio.gather(previous, return_exceptions=True)
             self._power_revision += 1
+            self.custom_results.clear()
             self._power_transition_target = "on" if power else "off"
             self._power_transition_task = self.hass.async_create_background_task(
                 self._async_power_transition_loop(power),
@@ -461,14 +487,14 @@ class ProjectorManager:
 
     async def async_set_select(self, command: str, option: str) -> None:
         await self._async_control(
-            self.client.async_command(f'{command} "{option}"')
+            self.client.async_command(f'{command} "{option}"', retry=False)
         )
         await self.async_read_command(command)
 
     async def async_set_switch(self, command: str, enabled: bool) -> None:
         await self._async_control(
             self.client.async_command(
-                f'{command} "{"on" if enabled else "off"}"'
+                f'{command} "{"on" if enabled else "off"}"', retry=False
             )
         )
         await self.async_read_command(command)
@@ -476,9 +502,134 @@ class ProjectorManager:
     async def async_set_number(self, command: str, value: float) -> None:
         formatted = str(int(value)) if value.is_integer() else str(value)
         await self._async_control(
-            self.client.async_command(f"{command} {formatted}")
+            self.client.async_command(f"{command} {formatted}", retry=False)
         )
         await self.async_read_command(command)
+
+    async def async_query_command(self, request: QueryRequest) -> dict[str, Any]:
+        """Perform a fresh read without changing entity caches or refresh schedules."""
+        task = asyncio.current_task()
+        assert task is not None
+        self._command_action_tasks.add(task)
+        try:
+            async with self._command_action_lock:
+                if self._closed:
+                    raise CommandValidationError("command_not_ready")
+                if self._power_transition_target is not None:
+                    raise CommandValidationError("command_during_transition")
+                async with self._operational_refresh_lock, self._power_command_lock:
+                    if self._closed or self._power_transition_target is not None:
+                        raise CommandValidationError("command_not_ready")
+                    revision = self._power_revision
+                    for index, frame in enumerate(request.frames):
+                        try:
+                            response = await self._async_control(self.client.async_command(frame))
+                            break
+                        except AdcpCommandError as err:
+                            # Only try Sony's alternate metadata syntax after a
+                            # format/option rejection, never after auth or IO errors.
+                            if index + 1 == len(request.frames) or err.response not in {
+                                "err_cmd", "err_option"
+                            }:
+                                raise
+                        if self._closed or revision != self._power_revision:
+                            raise CommandValidationError("query_stale")
+                    if self._closed or revision != self._power_revision:
+                        raise CommandValidationError("query_stale")
+                    data: Any = response
+                    # Preserve scalar strings (including numeric-looking choices).
+                    # Only structured JSON has an unambiguous type after normalization.
+                    if response.startswith(("[", "{")):
+                        try:
+                            data = json.loads(response)
+                        except json.JSONDecodeError:
+                            pass
+                    return {"command": request.command, "query_type": request.query_type,
+                            "response": response, "data": data}
+        finally:
+            self._command_action_tasks.discard(task)
+
+    async def async_send_command(
+        self, request: CommandRequest, *, result: dict[str, str] | None = None
+    ) -> dict[str, str]:
+        """Track caller tasks so unloading cancels in-flight custom controls."""
+        task = asyncio.current_task()
+        assert task is not None
+        self._command_action_tasks.add(task)
+        try:
+            return await self._async_send_command(request, result=result)
+        finally:
+            self._command_action_tasks.discard(task)
+
+    async def _async_send_command(
+        self, request: CommandRequest, *, result: dict[str, str] | None = None
+    ) -> dict[str, str]:
+        """Send one validated write and report acknowledgement separately from state.
+
+        Serialize custom actions with operational refreshes so an older periodic
+        reply cannot overwrite the immediate post-write readback. Power keeps its
+        existing command lock, target tracking and bounded monitor.
+        """
+        result = {} if result is None else result
+        async with self._command_action_lock:
+            if self._closed:
+                raise CommandValidationError("command_not_ready")
+            if request.power is not None:
+                await self._async_set_power(request.power)
+                result.update(response="ok", readback="power_monitor")
+                return result
+            if self._power_transition_target is not None:
+                raise CommandValidationError("command_during_transition")
+            async with self._operational_refresh_lock, self._power_command_lock:
+                if self._closed or self._power_transition_target is not None:
+                    raise CommandValidationError("command_not_ready")
+                revision = self._power_revision
+                info = self._action_command_info.get(request.command)
+                if request.command != "key" and info is None:
+                    info = await self._async_control(
+                        self.client.async_get_command_info(request.command)
+                    )
+                    if info is not None:
+                        # Bound the metadata cache. Never cache failed probes.
+                        if len(self._action_command_info) >= 128:
+                            self._action_command_info.clear()
+                        self._action_command_info[request.command] = info
+                wire = request.encode(info)
+                # A power command/announcement or unload may have arrived while
+                # acquiring metadata. Do not send a now-stale control afterward.
+                if self._closed or revision != self._power_revision or (
+                    self._power_transition_target is not None
+                ):
+                    raise CommandValidationError("command_not_ready")
+                self.custom_results.pop(request.command, None)
+                self._notify()
+                response = await self._async_control(self.client.async_command(wire, retry=False))
+                if response.lower() != "ok":
+                    raise AdcpOutcomeUnknownError("Unexpected acknowledgement. Not retried.")
+                result.update(response="ok", readback="not_configured")
+                if request.command == "input":
+                    # Preserve the built-in input/signal and confirmed-power refresh path.
+                    await self.async_refresh()
+                    result["readback"] = "input_signal_refresh"
+                if request.command == "key" or request.operation == "execute":
+                    result["readback"] = "not_supported"
+                    return result
+                if self._closed or self.state.power_status != "on" or (
+                    self._power_transition_target is not None
+                ):
+                    result["readback"] = "skipped"
+                elif request.command in (
+                    self._picture_commands.keys() | self._custom_commands.keys()
+                ):
+                    revision = self._power_revision
+                    value = await self.async_read_command(request.command)
+                    if self._closed or revision != self._power_revision:
+                        result["readback"] = "skipped"
+                        return result
+                    result["readback"] = "updated" if value is not None else "failed"
+                    if value is not None:
+                        result["value"] = value
+                return result
 
     @callback
     def async_set_operational_refresh_interval(self, interval: int) -> None:
@@ -511,6 +662,7 @@ class ProjectorManager:
                 self._power_watchdog_task,
                 self._power_transition_task,
                 self._timer_refresh_task,
+                *self._command_action_tasks,
             )
             if task is not None and not task.done()
         ]
@@ -577,17 +729,108 @@ class ProjectorManager:
             revision = self._power_revision
             if not self._can_refresh_operational(revision):
                 return
-            source = await self._optional_value("input", self.state.source)
+            results: dict[str, CustomCommandResult] = {}
+            source = await self._optional_value("input", self.state.source, results)
             if not self._can_refresh_operational(revision):
                 return
-            signal = await self._optional_value("signal", self.state.signal)
+            signal = await self._optional_value("signal", self.state.signal, results)
             if not self._can_refresh_operational(revision):
                 return
             updated = replace(self.state, source=source, signal=signal)
             if updated != self.state:
                 self.state = updated
                 self._notify()
-            await self._async_refresh_picture_settings(revision)
+            await self._async_refresh_picture_settings(revision, results)
+            await self._async_refresh_custom_sensors(revision, results)
+
+    @callback
+    def async_track_custom_command(self, command: str) -> Callable[[], None]:
+        """Register only enabled entities; duplicate commands share one query."""
+        validate_sensor_config({"name": command, "command": command})
+        self._custom_commands[command] = self._custom_commands.get(command, 0) + 1
+        removed = False
+
+        @callback
+        def unsubscribe() -> None:
+            nonlocal removed
+            if removed:
+                return
+            removed = True
+            remaining = self._custom_commands.get(command, 0) - 1
+            if remaining > 0:
+                self._custom_commands[command] = remaining
+            else:
+                self._custom_commands.pop(command, None)
+                self.custom_results.pop(command, None)
+                self._custom_retry_after.pop(command, None)
+
+        return unsubscribe
+
+    @callback
+    def _set_custom_result(self, command: str, result: CustomCommandResult) -> None:
+        if command in self._custom_commands and self.custom_results.get(command) != result:
+            self.custom_results[command] = result
+            self._notify()
+
+    async def _async_refresh_custom_sensors(
+        self, power_revision: int, results: dict[str, CustomCommandResult]
+    ) -> None:
+        """Bound custom reads separately, rotating so a slow query cannot starve peers."""
+        commands = tuple(self._custom_commands)
+        if not commands or not self._can_refresh_operational(power_revision):
+            return
+        if any(result.error == "authentication" for result in results.values()):
+            for command in commands:
+                self._set_custom_result(command, CustomCommandResult(error="authentication"))
+            return
+        start = self._custom_cursor % len(commands)
+        loop = asyncio.get_running_loop()
+        command = ""
+        try:
+            async with asyncio.timeout(CUSTOM_REFRESH_BUDGET):
+                for offset in range(len(commands)):
+                    if not self._can_refresh_operational(power_revision):
+                        return
+                    index = (start + offset) % len(commands)
+                    self._custom_cursor = (index + 1) % len(commands)
+                    command = commands[index]
+                    if command in self._custom_commands and command in results:
+                        if results[command].error:
+                            self._custom_retry_after[command] = loop.time() + CUSTOM_RETRY_INTERVAL
+                        else:
+                            self._custom_retry_after.pop(command, None)
+                        self._set_custom_result(command, results[command])
+                        continue
+                    if (
+                        command not in self._custom_commands
+                        or self._custom_retry_after.get(command, 0) > loop.time()
+                    ):
+                        continue
+                    try:
+                        response = await self.client.async_command(f"{command} ?")
+                    except AdcpAuthenticationError:
+                        if not self._can_refresh_operational(power_revision):
+                            return
+                        self._set_custom_result(
+                            command, CustomCommandResult(error="authentication")
+                        )
+                        self._auth_failed()
+                        return
+                    except AdcpError:
+                        if not self._can_refresh_operational(power_revision):
+                            return
+                        self._custom_retry_after[command] = loop.time() + CUSTOM_RETRY_INTERVAL
+                        self._set_custom_result(command, CustomCommandResult(error="query_failed"))
+                        continue
+                    if not self._can_refresh_operational(power_revision):
+                        return
+                    self._custom_retry_after.pop(command, None)
+                    self._set_custom_result(command, CustomCommandResult(response=response))
+        except TimeoutError:
+            if self._can_refresh_operational(power_revision):
+                self._custom_retry_after[command] = loop.time() + CUSTOM_RETRY_INTERVAL
+                self._set_custom_result(command, CustomCommandResult(error="timeout"))
+            _LOGGER.debug("Custom sensor refresh budget exhausted while reading %s", command)
 
     def _can_refresh_operational(self, revision: int) -> bool:
         return (
@@ -599,7 +842,9 @@ class ProjectorManager:
             and self.state.available
         )
 
-    async def _async_refresh_picture_settings(self, power_revision: int) -> None:
+    async def _async_refresh_picture_settings(
+        self, power_revision: int, results: dict[str, CustomCommandResult]
+    ) -> None:
         """Bound optional reads so slow settings cannot monopolize ADCP."""
         if not self._refresh_picture_settings:
             return
@@ -625,9 +870,11 @@ class ProjectorManager:
                     try:
                         value = await self.client.async_command(f"{command} ?")
                     except AdcpAuthenticationError:
+                        results[command] = CustomCommandResult(error="authentication")
                         self._auth_failed()
                         return
                     except AdcpError:
+                        results[command] = CustomCommandResult(error="query_failed")
                         self._picture_retry_after[command] = (
                             loop.time() + PICTURE_REFRESH_RETRY_INTERVAL
                         )
@@ -641,21 +888,33 @@ class ProjectorManager:
                     if command not in self._picture_commands:
                         continue
                     self._picture_retry_after.pop(command, None)
+                    results[command] = CustomCommandResult(response=value)
                     if self.state.values.get(command) != value:
                         values = {**self.state.values, command: value}
                         self.state = replace(self.state, values=values)
                         self._notify()
         except TimeoutError:
+            results[command] = CustomCommandResult(error="timeout")
             self._picture_retry_after[command] = loop.time() + PICTURE_REFRESH_RETRY_INTERVAL
             _LOGGER.debug("Picture refresh budget exhausted while reading %s", command)
 
-    async def _optional_value(self, command: str, previous: str | None) -> str | None:
+    async def _optional_value(
+        self, command: str, previous: str | None,
+        results: dict[str, CustomCommandResult] | None = None,
+    ) -> str | None:
         try:
-            return (await self.client.async_command(f"{command} ?")).lower()
+            response = await self.client.async_command(f"{command} ?")
+            if results is not None:
+                results[command] = CustomCommandResult(response=response)
+            return response.lower()
         except AdcpAuthenticationError:
+            if results is not None:
+                results[command] = CustomCommandResult(error="authentication")
             self._auth_failed()
             return previous
         except AdcpError:
+            if results is not None:
+                results[command] = CustomCommandResult(error="query_failed")
             return previous
 
     async def _optional_list(
@@ -669,10 +928,10 @@ class ProjectorManager:
         except AdcpError:
             return previous
 
-    async def _async_control(self, operation: Awaitable[Any]) -> None:
+    async def _async_control(self, operation: Awaitable[Any]) -> Any:
         """Execute a control and start reauth if credentials are rejected."""
         try:
-            await operation
+            return await operation
         except AdcpAuthenticationError:
             self._auth_failed()
             raise

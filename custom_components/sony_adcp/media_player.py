@@ -28,7 +28,8 @@ async def async_setup_entry(
 class SonyAdcpProjector(SonyAdcpEntity, MediaPlayerEntity):
     """Projector power and input selection."""
 
-    _attr_device_class = MediaPlayerDeviceClass.PROJECTOR
+    # Older supported HA versions do not yet have a projector device class.
+    _attr_device_class = getattr(MediaPlayerDeviceClass, "PROJECTOR", MediaPlayerDeviceClass.TV)
     _attr_name = None
     _attr_supported_features = (
         MediaPlayerEntityFeature.TURN_ON

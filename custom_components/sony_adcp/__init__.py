@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 
 from .const import (
@@ -21,8 +22,10 @@ from .const import (
     DOMAIN,
     PLATFORMS,
 )
+from .custom_commands import CONF_CUSTOM_SENSORS
 from .discovery import SdapListener
 from .manager import ProjectorManager
+from .migration import async_migrate_beta1_sensors, async_remove_deleted_custom_sensors
 from .protocol import (
     AdcpAuthenticationError,
     AdcpClient,
@@ -32,6 +35,7 @@ from .protocol import (
 _LOGGER = logging.getLogger(__name__)
 
 DATA_LISTENER = "listener"
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 @dataclass(slots=True)
@@ -47,6 +51,9 @@ type SonyAdcpConfigEntry = ConfigEntry[SonyAdcpRuntimeData]
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Initialize the integration namespace and SDAP listener."""
+    from .services import async_register_services
+
+    async_register_services(hass)
     await async_get_listener(hass)
     return True
 
@@ -72,6 +79,7 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: SonyAdcpConfigEntry
 ) -> bool:
     """Set up a Sony projector from a config entry."""
+    async_remove_deleted_custom_sensors(hass, entry)
     client = AdcpClient(
         entry.data[CONF_HOST],
         entry.data.get(CONF_PORT, DEFAULT_PORT),
@@ -107,7 +115,25 @@ async def async_setup_entry(
     )
     entry.runtime_data = SonyAdcpRuntimeData(manager, unsubscribe)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    sensors = _custom_sensor_snapshot(entry)
+
+    async def async_options_updated(
+        hass: HomeAssistant, updated_entry: SonyAdcpConfigEntry
+    ) -> None:
+        """Reload only custom-sensor changes, not refresh or DHCP updates."""
+        nonlocal sensors
+        updated = _custom_sensor_snapshot(updated_entry)
+        if updated != sensors:
+            sensors = updated
+            await hass.config_entries.async_reload(updated_entry.entry_id)
+
+    entry.async_on_unload(entry.add_update_listener(async_options_updated))
     return True
+
+
+def _custom_sensor_snapshot(entry: SonyAdcpConfigEntry) -> list[dict[str, str]]:
+    """Copy options so in-place changes cannot mask a required reload."""
+    return [dict(sensor) for sensor in entry.options.get(CONF_CUSTOM_SENSORS, [])]
 
 
 async def async_unload_entry(
@@ -124,9 +150,9 @@ async def async_unload_entry(
 async def async_migrate_entry(
     hass: HomeAssistant, entry: SonyAdcpConfigEntry
 ) -> bool:
-    """Migrate older prototype entries without data loss."""
-    if entry.version == 1:
-        hass.config_entries.async_update_entry(entry, version=2)
+    """Preserve beta 1 settings, unique IDs and device ownership on upgrade."""
+    async_migrate_beta1_sensors(hass, entry)
+    hass.config_entries.async_update_entry(entry, version=2, minor_version=2)
     return True
 
 
