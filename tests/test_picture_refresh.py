@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -124,7 +125,7 @@ class PictureRefreshTest(unittest.IsolatedAsyncioTestCase):
         )
         await self.manager._async_refresh_operational()
         self.assertTrue(self.manager.state.available)
-        self.assertEqual(self.manager.state.values["sharpness"], "20")
+        self.assertNotIn("sharpness", self.manager.state.values)
         self.assertEqual(self.manager.state.values["blank"], "on")
         await self.manager._async_refresh_operational()
         self.assertEqual(self.client.commands.count("sharpness ?"), 1)
@@ -195,7 +196,7 @@ class PictureRefreshTest(unittest.IsolatedAsyncioTestCase):
         self.client.release.set()
         await task
         self.assertEqual(self.manager.state.power_status, "standby")
-        self.assertEqual(self.manager.state.values["picture_mode"], "cinema_film1")
+        self.assertEqual(self.manager.state.values, {})
         self.assertIsNone(self.manager.state.source)
         self.assertNotIn("sharpness ?", self.client.commands)
 
@@ -206,6 +207,19 @@ class PictureRefreshTest(unittest.IsolatedAsyncioTestCase):
         await task
         self.assertEqual(self.manager.state.values["picture_mode"], "cinema_film1")
         self.assertEqual(self.manager.state.values["sharpness"], "65")
+
+    async def test_stale_failed_read_does_not_clear_new_power_sessions_value(self):
+        self.enable("sharpness")
+        self.client.block_command = "sharpness ?"
+        self.client.responses["sharpness ?"] = _protocol.AdcpConnectionError("old failure")
+        task = asyncio.create_task(self.manager.async_read_command("sharpness"))
+        await self.client.started.wait()
+        self.manager._apply_power_status("standby")
+        self.manager._apply_power_status("on")
+        self.manager.state = replace(self.manager.state, values={"sharpness": "80"})
+        self.client.release.set()
+        await task
+        self.assertEqual(self.manager.state.values["sharpness"], "80")
 
     async def test_unchanged_values_do_not_notify_entities_again(self):
         self.enable("picture_mode", "sharpness", "blank")
