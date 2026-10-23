@@ -4,7 +4,7 @@ This reference describes stable **v2.4.0**, including the v2.3.0 behavior plus
 [custom ADCP sensors](custom-sensors.md). Older v2.3.0 does not
 include custom sensors or the [Send/Query ADCP command actions](custom-commands.md).
 
-On this **v2.4.1b1 beta branch**, the picture-control lifecycle and capability
+On this **v2.4.1b2 beta branch**, the picture-control lifecycle and capability
 discovery changes below supersede 2.4.0. See [beta testing](#241-beta-testing).
 
 The [Query ADCP command](custom-commands.md#query-current-values) returns a
@@ -77,7 +77,9 @@ For the table:
 - **Initial control read** means a query when an enabled control entity is added
   while fully on, or after the next confirmed startup. It does not query picture
   values while off or during transitions. This one-time read is independent of
-  the periodic refresh options; pending failures retry on eligible core refreshes.
+  the periodic refresh options. Pending failures retry on eligible core refreshes
+  and on the configured loop even with Include picture settings off; successfully
+  read controls then leave the initial-read queue.
 - **Own-command readback** means a query immediately after Home Assistant
   successfully sends a change to that same control. It is independent of both
   refresh options; a failed picture read makes that control unavailable rather
@@ -297,11 +299,29 @@ Enabled custom sensors follow, with their own two-second total budget and
 60-second query-failure backoff. Duplicate commands reuse one response per cycle.
 See [custom-sensor timing and failure rules](custom-sensors.md#exactly-when-readings-update).
 
-A failed picture read clears its live value (the entity becomes unavailable) and backs off for
-at least **60 seconds**. Other controls can still be read within the remaining
-budget. A budget timeout ends the picture phase and backs off the command that
-was in progress. Stale in-flight picture results are discarded after relevant
-power/option changes. Periodic picture updates are published when values change.
+A failed picture read clears its live value (the entity becomes unavailable).
+Normally it backs off for at least **60 seconds**. In **2.4.1 beta 2**, during the
+first **60 seconds after confirmed `on`**, a Sony `err_inactive` reply instead
+makes that setting eligible again after the configured **5/10/30-second interval**.
+This handles menu settings that are not ready immediately when power becomes
+`on`. There is no intentional one-minute wait for the first read, and no new
+one-second picture polling loop. An unchanged `on` announcement does not restart
+the recovery window. Inactivity that persists beyond the window, unsupported
+commands, connection failures and timeouts retain the normal 60-second backoff.
+
+If Include picture settings is off, only pending initial reads use the configured
+loop; each control stops being queried once that initial read succeeds. If the
+refresh interval is Disabled, no faster retry loop is started and the normal
+60-second backoff/eligible core refreshes apply. Custom-sensor retry rules are
+unchanged. Retry eligibility is not a guarantee of exact timing: query duration,
+locks, batch budgets and subsequent refresh opportunities still apply.
+
+Other controls can still be read within the remaining budget. A budget timeout
+ends the picture phase and backs off the command that was in progress. Stale
+in-flight picture results are discarded after relevant power/option changes.
+Periodic picture updates are published when values change. Debug logging reports
+failed built-in picture queries and their retry delay, not successful setting
+values, to help distinguish startup inactivity from transport/budget failures.
 
 Input/signal read failures also keep their previous values. When power leaves
 `on`, however, input, signal and picture readings are explicitly cleared. Known
@@ -372,7 +392,7 @@ These values are metadata, not additional periodically refreshed sensors.
 | Numeric ranges | Command-info probes for `brightness`, `contrast`, `sharpness`, `light_output_val`, `real_cre_reso`, and `real_cre_noise`. Determines which number entities can be created. |
 | Video-mute support | Command-info probe for `blank`, or a successful value read. |
 
-In 2.4.1b1, capability discovery uses command-info queries **only while fully on**,
+Since 2.4.1b1, capability discovery uses command-info queries **only while fully on**,
 with alternate syntax attempted only after explicit command/option rejection.
 Setup, changed-power SDAP refreshes, completed turn-on monitoring, and the existing
 60-second core watchdog can trigger eligible probes. A pass is bounded to 15 seconds;
@@ -395,7 +415,7 @@ It does **not** query the projector or make stale values fresh.
 ## 2.4.1 beta testing
 
 Stable v2.4.0 is unchanged. In HACS enable **Show beta versions**, choose
-**v2.4.1b1** through **Redownload**, and restart Home Assistant. Do not delete or
+**v2.4.1b2** through **Redownload**, and restart Home Assistant. Do not delete or
 re-add the integration or its existing entities.
 
 1. Turn the projector on and wait for confirmed `on`. Check Brightness, Contrast,
@@ -408,6 +428,12 @@ re-add the integration or its existing entities.
    controls should still exist without the "no longer being provided" banner.
    Existing entity IDs, names and history must remain unchanged.
 4. Turn it on again. Controls should regain fresh values without another reload.
+   With a 10-second interval, compare confirmed `on` with the time picture values
+   return. If startup queries return `err_inactive`, beta 2 retries them on the
+   configured cadence during the first minute, rather than imposing a minute-long
+   backoff. Actual projector readiness still matters. If the minute-long delay
+   persists, enable integration debug logging before another startup and inspect
+   the failed-query reason and retry delay; do not assume all failures are inactivity.
    Repeat once with periodic refresh Disabled and Include picture settings off:
    the initial on-read should still happen, but no recurring picture loop starts.
 5. If you use custom sensors, add/edit one while off and repeat step 4. Check that
