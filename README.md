@@ -21,8 +21,8 @@
   </a>
   <a href="https://github.com/tokyotexture/home-assistant-sony-adcp/actions">
     <img
-      src="https://img.shields.io/github/actions/workflow/status/tokyotexture/home-assistant-sony-adcp/validate.yml?branch=beta%2F2.4-custom-sensors&style=flat-square&label=beta%20validation"
-      alt="Beta branch validation status"
+      src="https://img.shields.io/github/actions/workflow/status/tokyotexture/home-assistant-sony-adcp/validate.yml?branch=master&style=flat-square&label=validation"
+      alt="Validation status"
     >
   </a>
   <a href="LICENSE">
@@ -43,13 +43,12 @@ Control power and inputs, see projector status, and build automations around
 your display. The integration uses Sony's local ADCP/SDAP protocols and presents
 the projector as a Home Assistant `media_player`—not a streaming player.
 
-> **2.4 beta:** this branch includes custom sensors and Query/Send ADCP actions.
-> Test **v2.4.0b4** through HACS with prerelease versions enabled.
-> **v2.3.0 remains the latest stable release.** See the [changelog](CHANGELOG.md)
-> for release history and the [upgrade guide](docs/setup-and-troubleshooting.md#upgrading).
+> **New in 2.4:** custom sensors and Query/Send ADCP actions are now stable.
+> Update through HACS and restart Home Assistant; prerelease versions are not
+> required. See the [changelog](CHANGELOG.md) and [upgrade guide](docs/setup-and-troubleshooting.md#upgrading).
 
 [Quick start](#quick-start) · [Compatibility](#compatibility) ·
-[Automations](#custom-automation-workflow-24-beta) · [Documentation](#documentation)
+[Automations](#custom-automation-workflow) · [Documentation](#documentation)
 
 ## Features
 
@@ -58,7 +57,7 @@ the projector as a Home Assistant `media_player`—not a streaming player.
 - Automatic discovery, model/serial identification and password-authentication detection.
 - Asynchronous local communication, reconnect handling and DHCP address updates.
 - Firmware information and operation/light-source hour sensors where supported.
-- Custom ADCP sensors and structured query/write actions **in the 2.4 beta**.
+- Custom ADCP sensors and structured query/write actions.
 - UI configuration, refresh options, reauthentication and redacted diagnostics.
 - No cloud service or extra Python runtime dependencies.
 
@@ -84,8 +83,8 @@ announcements. [Network details and troubleshooting](docs/setup-and-troubleshoot
 2. Add `https://github.com/tokyotexture/home-assistant-sony-adcp`, category **Integration**.
 3. Install **Sony ADCP Projector** and restart Home Assistant.
 
-For the 2.4 beta, enable prerelease versions and use **Redownload** to select
-**v2.4.0b4**. The default stable version does not include custom sensors/actions.
+Version **2.4.0** includes custom sensors/actions without enabling prereleases.
+If upgrading from a beta, select **v2.4.0** through **Redownload** if needed.
 
 #### Manual installation
 
@@ -129,13 +128,13 @@ custom command. Compatibility reports are welcome.
 | Status | Detailed power state and signal format |
 | Picture settings | Picture mode, video mute, brightness, contrast, sharpness, light output and Reality Creation controls, where supported |
 | Device diagnostics | Main firmware, optional operation/light-source hours, and setup-only error/warning snapshots |
-| Custom sensors (2.4 beta) | Named read-only ADCP values, including optional JSON fields and numeric units |
+| Custom sensors | Named read-only ADCP values, including optional JSON fields and numeric units |
 
 The media player represents a **display**, so it does not offer playback or
 streaming controls. Optional entities depend on model support; some may be
 disabled by default. See [every entity and when it updates](docs/state-updates.md#entity-and-value-reference).
 
-## Custom automation workflow (2.4 beta)
+## Custom automation workflow
 
 1. **Discover:** Use **Query ADCP command** to read a known command, inspect its
    allowed values/range, or obtain command information.

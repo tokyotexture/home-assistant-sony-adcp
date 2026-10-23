@@ -2,19 +2,39 @@
 
 All notable changes to Sony ADCP Projector are documented here.
 
-## Unreleased documentation
+## 2.4.0 — 2026-10-22
+
+- Stable release of the tested 2.4 betas. The maintainer confirmed Query/Send
+  ADCP actions and custom sensors on Sony VPL-VW535, firmware 5.003. Support for
+  individual commands and choices still varies by model and input.
+- Add named, read-only custom sensors through Configure → Custom sensors,
+  with optional JSON fields and numeric units. Reuse the shared async client
+  and configured refresh interval while fully on, with deduplication, bounded
+  batches, error backoff and unavailable-state handling.
+- Add administrator-only `sony_adcp.query_command` for current values, allowed
+  values/ranges and command information, returning responses to Developer Tools
+  and scripts. Add `sony_adcp.send_command` for structured Set, Relative, Reset,
+  Execute and remote-key operations with metadata/type/range/case validation.
+- Preserve explicit power monitoring, never automatically replay writes after
+  lost replies, and immediately read back matching enabled sensors/controls
+  after acknowledged readable writes. Bound custom actions to 30 seconds and
+  cancel them on unload; reject non-power actions during fast power monitoring.
+- Include the beta 2 device-ownership fix and automatic migration of remaining
+  beta 1 sensors; preserve projector power controls and existing registrations.
+- Promote the beta 4 runtime unchanged apart from the version identifier;
+  retain all 2.3 power-transition, picture-refresh and usage-hour behavior.
 
 - Shorten the README into a quick start, compatibility overview and guide index.
   Keep detailed update rules in their reference, and move network/authentication,
   upgrade/troubleshooting and development material into linked guides. Record
-  maintainer-confirmed 2.4 functionality on VPL-VW535; retain the stable/beta split.
+  maintainer-confirmed 2.4 functionality on VPL-VW535 and document stable upgrades.
 - Add an end-to-end discover → control → monitor guide with complete HA scripts
   and a custom-sensor automation: read aspect ratio, check reported choices before
   setting it, react to known-value changes, and wait for confirmed startup.
 - Clarify action response versus entity state, device/entity ID placeholders,
   exact-case/model-specific support, polling/freshness limits, unavailable-state
-  guards and unsupported raw/network/calibration commands. No runtime or version
-  change; the published beta 4 tag remains unchanged.
+  guards and unsupported raw/network/calibration commands. Historical beta tags
+  remain unchanged.
 - Validate the guide's copyable YAML, action payloads and choice/startup/state
   guards against real Home Assistant schemas and template rendering in CI.
 
