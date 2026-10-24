@@ -61,10 +61,25 @@ before sharing, and never post passwords.
 ## Upgrading
 
 Restart Home Assistant after updating integration files through HACS or manually.
-The stable release is **v2.4.0**, including custom sensors and Query/Send actions.
-Prerelease versions are not required. If upgrading from a 2.4 beta, use
-**Redownload** to select v2.4.0 if needed; keep the integration and existing
+The stable release is **v2.4.1**, including the 2.4 custom sensors/Query/Send actions
+and fixes for resilient picture updates and startup recovery. Prerelease versions
+are not required. If upgrading from a beta, use **Redownload** to select v2.4.1
+if needed; keep the integration and existing
 sensors in place. See the [changelog](../CHANGELOG.md) for history.
+
+### Picture-control fixes in 2.4.1
+
+From 2.4.0 or older, turn the projector fully on once after upgrading. This learns
+and saves the supported controls/ranges; earlier versions did not persist them.
+An off-only first upgrade cannot restore ranges that have never been saved.
+Existing 2.4.1 beta users keep their capability cache. No entity recreation or
+configuration changes are required, and names, IDs and history are preserved.
+
+Picture controls are now **unavailable** while off or until a fresh read succeeds,
+instead of displaying stale values. This is expected, including orange unavailable
+indicators on dashboards; it does not mean the integration stopped providing them.
+Temporary startup inactivity retries on the configured interval during the first
+minute after confirmed `on`. See [all timing and recovery rules](state-updates.md).
 
 ### From 2.4 beta 1
 
@@ -124,7 +139,9 @@ Add integration → Sony ADCP Projector** afterward.
 
 ### Unavailable in standby
 
-Enable the projector setting that keeps networking active in standby. An
+Picture controls and custom sensors becoming unavailable in standby is expected;
+they recover after power-on and successful reads. If the **power control/status**
+also becomes unavailable, enable the projector setting that keeps networking active in standby. An
 energy-saving standby mode may disable the network even though normal control
 works while the projector is on. Respect cooldown; do not rapidly cycle power.
 
