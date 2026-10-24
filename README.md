@@ -78,16 +78,31 @@ announcements. [Network details and troubleshooting](docs/setup-and-troubleshoot
 
 ### 2. Install
 
-#### HACS
+#### HACS (recommended)
+
+Sony ADCP Projector is included in the official HACS catalog. **No custom
+repository is required.** If needed, [install and configure HACS](https://www.hacs.dev/docs/use/) first.
 
 [![Open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=tokyotexture&repository=home-assistant-sony-adcp&category=integration)
 
-1. Open **HACS → ⋮ → Custom repositories**.
-2. Add `https://github.com/tokyotexture/home-assistant-sony-adcp`, category **Integration**.
-3. Install **Sony ADCP Projector** and restart Home Assistant.
+1. Open **HACS** in Home Assistant.
+2. Search for **Sony ADCP Projector** (or `home-assistant-sony-adcp`) and open it.
+3. Select **Download** and choose the latest stable version.
+4. **Restart Home Assistant**, then continue with **Add the integration** below.
 
 Version **2.4.1** includes all 2.4 custom sensors/actions plus picture-update fixes.
 If upgrading from a beta, select **v2.4.1** through **Redownload** if needed.
+
+Already installed through HACS as a custom repository? Keep your existing
+installation and integration—no reinstall or reconfiguration is needed.
+
+##### Custom repository fallback
+
+Only needed if the official listing is not yet visible in your local HACS catalog:
+
+1. Open **HACS → ⋮ → Custom repositories**.
+2. Add `https://github.com/tokyotexture/home-assistant-sony-adcp`, category **Integration**.
+3. Open **Sony ADCP Projector**, select **Download**, then restart Home Assistant.
 
 #### Manual installation
 
