@@ -2,6 +2,29 @@
 
 All notable changes to Sony ADCP Projector are documented here.
 
+## 2.4.1 — 2026-10-24
+
+- Improve the resilience of picture-control updates. Preserve discovered controls
+  and numeric ranges across Home Assistant restarts or integration reloads while
+  the projector is off, keeping entity IDs and history instead of showing
+  "no longer provided". Cache capabilities only, not live settings.
+- Show picture controls as unavailable while off, starting/cooling, transitioning,
+  or awaiting a successful read. Clear stale readings without removing entities;
+  restore fresh values automatically after power-on. Retry temporary capability
+  discovery failures without discarding previously confirmed support.
+- Improve startup refresh: during the first 60 seconds after confirmed `on`,
+  temporarily inactive picture settings retry on the configured 5/10/30-second
+  cadence rather than imposing a 60-second backoff. Persistent/other failures
+  retain the existing backoff and bounded batches. No new polling task is added.
+- Finish pending initial control reads even when recurring picture refresh is
+  off. Disabled polling remains disabled. Custom sensors, command actions and
+  power-transition monitoring retain their existing behaviour.
+- Promote the beta 2 runtime unchanged apart from its version. Maintainer hardware
+  testing confirmed the fixes on Sony VPL-VW535, firmware 5.003. Add complete
+  update/upgrade documentation and retain 185 offline and 22 native HA regressions.
+  After upgrading from 2.4.0 or older, turn fully on once to populate the new
+  capability cache; existing 2.4.1 beta users retain their cache.
+
 ## 2.4.1b2 — 2026-10-23 (prerelease)
 
 - Retry picture-setting `err_inactive` replies at the configured 5/10/30-second
