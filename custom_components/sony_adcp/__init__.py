@@ -13,6 +13,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 
+from .capabilities import CONF_CAPABILITIES
 from .const import (
     CONF_OPERATIONAL_REFRESH_INTERVAL,
     CONF_REFRESH_PICTURE_SETTINGS,
@@ -99,12 +100,16 @@ async def async_setup_entry(
         refresh_picture_settings=entry.options.get(
             CONF_REFRESH_PICTURE_SETTINGS, DEFAULT_REFRESH_PICTURE_SETTINGS
         ),
+        cached_capabilities=entry.data.get(CONF_CAPABILITIES),
+        capabilities_changed=lambda cache: _update_capabilities(hass, entry, cache),
     )
     try:
         await manager.async_initialize()
     except AdcpAuthenticationError as err:
+        await manager.async_close()
         raise ConfigEntryAuthFailed(str(err)) from err
     except AdcpError as err:
+        await manager.async_close()
         raise ConfigEntryNotReady(str(err)) from err
 
     listener = await async_get_listener(hass)
@@ -134,6 +139,14 @@ async def async_setup_entry(
 def _custom_sensor_snapshot(entry: SonyAdcpConfigEntry) -> list[dict[str, str]]:
     """Copy options so in-place changes cannot mask a required reload."""
     return [dict(sensor) for sensor in entry.options.get(CONF_CUSTOM_SENSORS, [])]
+
+
+def _update_capabilities(hass: HomeAssistant, entry: SonyAdcpConfigEntry, cache: dict) -> None:
+    """HA persists entry metadata; this must not reload the integration."""
+    if entry.data.get(CONF_CAPABILITIES) != cache:
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, CONF_CAPABILITIES: cache},
+        )
 
 
 async def async_unload_entry(

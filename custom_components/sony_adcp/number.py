@@ -9,7 +9,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import SonyAdcpConfigEntry
 from .const import NUMBER_COMMANDS
-from .entity import SonyAdcpEntity
+from .entity import SonyAdcpPictureEntity
 from .manager import ProjectorManager
 
 
@@ -41,7 +41,7 @@ async def async_setup_entry(
     entry.async_on_unload(manager.async_add_listener(add_supported_entities))
 
 
-class SonyAdcpNumber(SonyAdcpEntity, NumberEntity):
+class SonyAdcpNumber(SonyAdcpPictureEntity, NumberEntity):
     """A projector menu_num command using its reported range."""
 
     _attr_entity_category = EntityCategory.CONFIG
@@ -53,13 +53,23 @@ class SonyAdcpNumber(SonyAdcpEntity, NumberEntity):
         command: str,
     ) -> None:
         super().__init__(entry, manager)
-        info = manager.command_info[command]
         self._command = command
         self._attr_translation_key = command
         self._attr_unique_id = f"{entry.unique_id}_{command}"
-        self._attr_native_min_value = info.minimum or 0
-        self._attr_native_max_value = info.maximum or 100
-        self._attr_native_step = 1
+
+    @property
+    def native_min_value(self) -> float:
+        value = self._manager.command_info[self._command].minimum
+        return value if value is not None else 0
+
+    @property
+    def native_max_value(self) -> float:
+        value = self._manager.command_info[self._command].maximum
+        return value if value is not None else 100
+
+    @property
+    def native_step(self) -> float:
+        return self._manager.command_info[self._command].step or 1
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()

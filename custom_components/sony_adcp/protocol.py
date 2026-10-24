@@ -288,8 +288,16 @@ class AdcpClient:
             try:
                 response = await self.async_command(request)
                 payload: dict[str, Any] = json.loads(response)
-            except (AdcpCommandError, json.JSONDecodeError):
+            except AdcpCommandError as err:
+                if err.response not in {"err_cmd", "err_option"}:
+                    raise
                 continue
+            except json.JSONDecodeError as err:
+                raise AdcpError("Invalid command metadata") from err
+            if not isinstance(payload, dict):
+                raise AdcpError("Invalid command metadata object")
+            if not isinstance(payload.get("type"), str) or not payload["type"]:
+                raise AdcpError("Missing command metadata type")
             command_type = str(payload.get("type", ""))
             range_value = payload.get("range")
             if isinstance(range_value, list):

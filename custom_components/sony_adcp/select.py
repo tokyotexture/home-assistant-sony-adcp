@@ -8,7 +8,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import SonyAdcpConfigEntry
 from .const import DEFAULT_PICTURE_MODES, SELECT_COMMANDS
-from .entity import SonyAdcpEntity
+from .entity import SonyAdcpPictureEntity
 from .manager import ProjectorManager
 
 
@@ -23,7 +23,7 @@ async def async_setup_entry(
     )
 
 
-class SonyAdcpSelect(SonyAdcpEntity, SelectEntity):
+class SonyAdcpSelect(SonyAdcpPictureEntity, SelectEntity):
     """A projector menu_sel command."""
 
     def __init__(

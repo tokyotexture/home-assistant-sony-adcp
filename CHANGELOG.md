@@ -2,6 +2,69 @@
 
 All notable changes to Sony ADCP Projector are documented here.
 
+## 2.4.1 — 2026-10-24
+
+- Improve the resilience of picture-control updates. Preserve discovered controls
+  and numeric ranges across Home Assistant restarts or integration reloads while
+  the projector is off, keeping entity IDs and history instead of showing
+  "no longer provided". Cache capabilities only, not live settings.
+- Show picture controls as unavailable while off, starting/cooling, transitioning,
+  or awaiting a successful read. Clear stale readings without removing entities;
+  restore fresh values automatically after power-on. Retry temporary capability
+  discovery failures without discarding previously confirmed support.
+- Improve startup refresh: during the first 60 seconds after confirmed `on`,
+  temporarily inactive picture settings retry on the configured 5/10/30-second
+  cadence rather than imposing a 60-second backoff. Persistent/other failures
+  retain the existing backoff and bounded batches. No new polling task is added.
+- Finish pending initial control reads even when recurring picture refresh is
+  off. Disabled polling remains disabled. Custom sensors, command actions and
+  power-transition monitoring retain their existing behaviour.
+- Promote the beta 2 runtime unchanged apart from its version. Maintainer hardware
+  testing confirmed the fixes on Sony VPL-VW535, firmware 5.003. Add complete
+  update/upgrade documentation and retain 185 offline and 22 native HA regressions.
+  After upgrading from 2.4.0 or older, turn fully on once to populate the new
+  capability cache; existing 2.4.1 beta users retain their cache.
+
+## 2.4.1b2 — 2026-10-23 (prerelease)
+
+- Retry picture-setting `err_inactive` replies at the configured 5/10/30-second
+  interval during the first 60 seconds after confirmed `on`. Do not turn a brief
+  startup rejection into a mandatory 60-second per-setting backoff. Repeated
+  `on` announcements do not extend the window. Persistent inactivity after the
+  window, unsupported commands, connection failures and timeouts retain the
+  existing 60-second backoff and two-second picture batch budget.
+- Finish pending initial picture reads on the existing configured loop even
+  with Include picture settings off; stop reading each control after its first
+  success in that mode. Disabled polling stays disabled: pending initial reads
+  retry on eligible core refreshes, without creating another polling task.
+- Log failed built-in picture reads and their retry eligibility at debug level
+  without logging successful setting values. Add six startup-recovery regressions
+  and document timing and physical-projector checks. Custom-sensor retry rules,
+  fast power monitoring and stable v2.4.0 remain unchanged.
+- Maintainer beta 1 hardware feedback on VPL-VW535, firmware 5.003 confirmed
+  shutdown unavailability, standby-restart entity persistence, automatic recovery
+  and a successful Brightness write. Beta 2 needs a new startup timing test;
+  the exact cause of the observed one-minute beta 1 delay is not yet proven.
+
+## 2.4.1b1 — 2026-10-23 (prerelease)
+
+- Preserve positively discovered built-in command metadata in the projector's
+  config entry. Numeric controls keep their existing entity IDs after a reload
+  or HA restart in standby, rather than appearing as "no longer provided".
+  Cache only capabilities, never operational values; reject corrupt ranges and
+  metadata from a known different model/serial/MAC identity.
+- Picture controls are unavailable while off, starting/cooling, undergoing a
+  commanded transition, or awaiting a successful read. Clear stale readings on
+  power changes and failed reads without removing the entity. Perform an initial
+  read after confirmed startup even with periodic picture refresh disabled.
+- Probe capabilities only while fully on. Preserve successful partial results,
+  retry inactive/transport/malformed replies on the existing 60-second watchdog,
+  and distinguish explicit unsupported commands from temporary failures. Bound
+  each discovery pass to 15 seconds and rotate pending commands after timeouts.
+- Add offline and real Home Assistant lifecycle/registry regressions. Keep stable
+  v2.4.0 unchanged. After upgrading, turn the projector on once to seed the new
+  metadata cache; 2.4.0 did not persist capabilities and cannot supply that cache.
+
 ## 2.4.0 — 2026-10-22
 
 - Stable release of the tested 2.4 betas. The maintainer confirmed Query/Send

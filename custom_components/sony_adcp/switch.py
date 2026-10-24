@@ -8,7 +8,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import SonyAdcpConfigEntry
 from .const import SWITCH_COMMANDS
-from .entity import SonyAdcpEntity
+from .entity import SonyAdcpPictureEntity
 from .manager import ProjectorManager
 
 
@@ -23,7 +23,7 @@ async def async_setup_entry(
     )
 
 
-class SonyAdcpSwitch(SonyAdcpEntity, SwitchEntity):
+class SonyAdcpSwitch(SonyAdcpPictureEntity, SwitchEntity):
     """A projector on/off menu command, such as video muting."""
 
     def __init__(

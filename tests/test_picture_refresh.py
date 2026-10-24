@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -86,6 +87,7 @@ class PictureRefreshTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_option_off_keeps_input_and_signal_refresh(self):
         self.enable("sharpness")
+        self.manager._picture_pending_reads.clear()  # Initial read already completed.
         self.manager.async_set_refresh_picture_settings(False)
         await self.manager._async_refresh_operational()
         self.assertEqual(self.client.commands, ["input ?", "signal ?"])
@@ -103,6 +105,7 @@ class PictureRefreshTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_unproven_command_is_not_queried(self):
         self.enable("brightness")
+        self.manager._picture_pending_reads.clear()  # Not a pending initial on-read.
         await self.manager._async_refresh_operational()
         self.assertNotIn("brightness ?", self.client.commands)
 
@@ -124,7 +127,7 @@ class PictureRefreshTest(unittest.IsolatedAsyncioTestCase):
         )
         await self.manager._async_refresh_operational()
         self.assertTrue(self.manager.state.available)
-        self.assertEqual(self.manager.state.values["sharpness"], "20")
+        self.assertNotIn("sharpness", self.manager.state.values)
         self.assertEqual(self.manager.state.values["blank"], "on")
         await self.manager._async_refresh_operational()
         self.assertEqual(self.client.commands.count("sharpness ?"), 1)
@@ -132,6 +135,113 @@ class PictureRefreshTest(unittest.IsolatedAsyncioTestCase):
         self.manager._picture_retry_after["sharpness"] = 0
         await self.manager._async_refresh_operational()
         self.assertEqual(self.manager.state.values["sharpness"], "75")
+
+    async def test_startup_inactive_settings_recover_on_next_configured_cycle(self):
+        self.enable("picture_mode", "sharpness", "blank")
+        self.manager._operational_refresh_interval = 10
+        self.manager._apply_power_status("startup")
+        self.manager._apply_power_status("on")
+        revision = self.manager._power_revision
+        now = asyncio.get_running_loop().time()
+        for command in ("picture_mode ?", "sharpness ?"):
+            self.client.responses[command] = _protocol.AdcpCommandError(command, "err_inactive")
+        with self.assertLogs("custom_components.sony_adcp.manager", level="DEBUG") as logs:
+            await self.manager._async_refresh_picture_settings(revision, {}, initial=True)
+        self.assertEqual(self.manager.state.values, {"blank": "on"})
+        self.assertTrue(any("err_inactive" in message and "10 seconds" in message
+                            for message in logs.output))
+        for command in ("picture_mode", "sharpness"):
+            self.assertAlmostEqual(self.manager._picture_retry_after[command], now + 10, delta=1)
+
+        self.client.responses.update({"picture_mode ?": "game", "sharpness ?": "65"})
+        self.client.commands.clear()
+        await self.manager._async_refresh_operational()
+        self.assertNotIn("picture_mode ?", self.client.commands)  # Still before next cycle.
+        with patch.object(asyncio.get_running_loop(), "time", return_value=now + 11):
+            await self.manager._async_refresh_operational()
+        self.assertEqual(self.manager.state.values, {
+            "picture_mode": "game", "sharpness": "65", "blank": "on",
+        })
+        self.assertEqual(self.manager._picture_retry_after, {})
+        self.assertEqual(self.manager._picture_pending_reads, set())
+
+    async def test_startup_retry_uses_each_configured_interval(self):
+        self.manager._picture_startup_until = asyncio.get_running_loop().time() + 60
+        inactive = _protocol.AdcpCommandError("sharpness ?", "err_inactive")
+        for interval in (5, 10, 30):
+            with self.subTest(interval=interval):
+                self.manager._operational_refresh_interval = interval
+                self.assertEqual(self.manager._picture_retry_delay(inactive), interval)
+
+    async def test_startup_short_retry_is_only_for_inactive_not_other_failures(self):
+        self.manager._operational_refresh_interval = 10
+        self.manager._picture_startup_until = asyncio.get_running_loop().time() + 60
+        for error in (
+            _protocol.AdcpCommandError("sharpness ?", "err_cmd"),
+            _protocol.AdcpCommandError("sharpness ?", "err_option"),
+            _protocol.AdcpConnectionError("offline"),
+        ):
+            with self.subTest(error=type(error).__name__, message=str(error)):
+                self.assertEqual(self.manager._picture_retry_delay(error), 60)
+
+    async def test_startup_recovery_window_is_not_extended_by_repeated_on_reports(self):
+        self.enable("sharpness")
+        self.manager._operational_refresh_interval = 10
+        self.manager._apply_power_status("startup")
+        self.manager._apply_power_status("on")
+        deadline = self.manager._picture_startup_until
+        inactive = _protocol.AdcpCommandError("sharpness ?", "err_inactive")
+        with patch.object(asyncio.get_running_loop(), "time", return_value=deadline + 1):
+            self.manager._apply_power_status("on")
+            self.assertEqual(self.manager._picture_startup_until, deadline)
+            self.assertEqual(self.manager._picture_retry_delay(inactive), 60)
+            self.client.responses["sharpness ?"] = inactive
+            await self.manager._async_refresh_picture_settings(
+                self.manager._power_revision, {}, initial=True,
+            )
+            self.assertEqual(self.manager._picture_retry_after["sharpness"], deadline + 61)
+        self.manager._apply_power_status("cooling1")
+        self.assertEqual(self.manager._picture_startup_until, 0)
+
+    async def test_picture_option_off_still_finishes_pending_initial_reads(self):
+        self.enable("picture_mode", "sharpness")
+        self.manager._operational_refresh_interval = 10
+        self.manager.async_set_refresh_picture_settings(False)
+        self.manager._apply_power_status("startup")
+        self.manager._apply_power_status("on")
+        now = asyncio.get_running_loop().time()
+        self.client.responses["picture_mode ?"] = _protocol.AdcpCommandError(
+            "picture_mode ?", "err_inactive",
+        )
+        await self.manager._async_refresh_picture_settings(
+            self.manager._power_revision, {}, initial=True,
+        )
+        self.assertEqual(self.manager.state.values, {"sharpness": "65"})
+        self.client.responses["picture_mode ?"] = "game"
+        self.client.commands.clear()
+        with patch.object(asyncio.get_running_loop(), "time", return_value=now + 11):
+            await self.manager._async_refresh_operational()
+        self.assertIn("picture_mode ?", self.client.commands)
+        self.assertNotIn("sharpness ?", self.client.commands)  # Already read successfully.
+        self.assertEqual(self.manager.state.values["picture_mode"], "game")
+        self.client.commands.clear()
+        await self.manager._async_refresh_operational()
+        self.assertEqual(self.client.commands, ["input ?", "signal ?"])
+
+    async def test_disabled_refresh_does_not_start_short_retry_loop(self):
+        self.enable("sharpness")
+        self.manager._apply_power_status("startup")
+        self.manager._apply_power_status("on")
+        self.client.responses["sharpness ?"] = _protocol.AdcpCommandError(
+            "sharpness ?", "err_inactive",
+        )
+        now = asyncio.get_running_loop().time()
+        await self.manager._async_refresh_picture_settings(
+            self.manager._power_revision, {}, initial=True,
+        )
+        self.assertAlmostEqual(self.manager._picture_retry_after["sharpness"], now + 60, delta=1)
+        self.assertIsNone(self.manager._operational_refresh_task)
+        self.assertEqual(self.hass.tasks, [])
 
     async def test_budget_cancels_slow_query_and_other_settings_recover_next_cycle(self):
         self.enable("picture_mode", "sharpness")
@@ -195,7 +305,7 @@ class PictureRefreshTest(unittest.IsolatedAsyncioTestCase):
         self.client.release.set()
         await task
         self.assertEqual(self.manager.state.power_status, "standby")
-        self.assertEqual(self.manager.state.values["picture_mode"], "cinema_film1")
+        self.assertEqual(self.manager.state.values, {})
         self.assertIsNone(self.manager.state.source)
         self.assertNotIn("sharpness ?", self.client.commands)
 
@@ -206,6 +316,19 @@ class PictureRefreshTest(unittest.IsolatedAsyncioTestCase):
         await task
         self.assertEqual(self.manager.state.values["picture_mode"], "cinema_film1")
         self.assertEqual(self.manager.state.values["sharpness"], "65")
+
+    async def test_stale_failed_read_does_not_clear_new_power_sessions_value(self):
+        self.enable("sharpness")
+        self.client.block_command = "sharpness ?"
+        self.client.responses["sharpness ?"] = _protocol.AdcpConnectionError("old failure")
+        task = asyncio.create_task(self.manager.async_read_command("sharpness"))
+        await self.client.started.wait()
+        self.manager._apply_power_status("standby")
+        self.manager._apply_power_status("on")
+        self.manager.state = replace(self.manager.state, values={"sharpness": "80"})
+        self.client.release.set()
+        await task
+        self.assertEqual(self.manager.state.values["sharpness"], "80")
 
     async def test_unchanged_values_do_not_notify_entities_again(self):
         self.enable("picture_mode", "sharpness", "blank")

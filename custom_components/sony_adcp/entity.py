@@ -51,3 +51,18 @@ class SonyAdcpEntity(Entity):
     @property
     def available(self) -> bool:
         return self._manager.state.available
+
+
+class SonyAdcpPictureEntity(SonyAdcpEntity):
+    """A persistent control whose live value is only usable while fully on."""
+
+    _command: str
+
+    @property
+    def available(self) -> bool:
+        return (
+            super().available
+            and self._manager.state.power_status == "on"
+            and self._manager.power_transition_target is None
+            and self._command in self._manager.state.values
+        )

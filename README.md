@@ -43,9 +43,12 @@ Control power and inputs, see projector status, and build automations around
 your display. The integration uses Sony's local ADCP/SDAP protocols and presents
 the projector as a Home Assistant `media_player`—not a streaming player.
 
-> **New in 2.4:** custom sensors and Query/Send ADCP actions are now stable.
-> Update through HACS and restart Home Assistant; prerelease versions are not
-> required. See the [changelog](CHANGELOG.md) and [upgrade guide](docs/setup-and-troubleshooting.md#upgrading).
+> **2.4.1 bugfix:** more resilient picture-control updates and faster recovery
+> after startup. Known controls survive restarts in standby and show unavailable
+> instead of stale values. Update through HACS and restart Home Assistant;
+> prereleases are not required. From 2.4.0 or older, turn fully on once to save
+> capabilities. See the [changelog](CHANGELOG.md) and
+> [upgrade guide](docs/setup-and-troubleshooting.md#upgrading).
 
 [Quick start](#quick-start) · [Compatibility](#compatibility) ·
 [Automations](#custom-automation-workflow) · [Documentation](#documentation)
@@ -83,8 +86,8 @@ announcements. [Network details and troubleshooting](docs/setup-and-troubleshoot
 2. Add `https://github.com/tokyotexture/home-assistant-sony-adcp`, category **Integration**.
 3. Install **Sony ADCP Projector** and restart Home Assistant.
 
-Version **2.4.0** includes custom sensors/actions without enabling prereleases.
-If upgrading from a beta, select **v2.4.0** through **Redownload** if needed.
+Version **2.4.1** includes all 2.4 custom sensors/actions plus picture-update fixes.
+If upgrading from a beta, select **v2.4.1** through **Redownload** if needed.
 
 #### Manual installation
 
@@ -113,7 +116,7 @@ display with network ADCP support. Not every Sony display supports these protoco
 
 | Model | Firmware | Report |
 | --- | --- | --- |
-| VPL-VW535 | 5.003 | Development model; maintainer confirmed 2.4 query/write actions and custom sensors working |
+| VPL-VW535 | 5.003 | Development model; maintainer tested 2.4 commands/custom sensors and the 2.4.1 picture-update fixes |
 | VPL-XW5000ES (reports as VPL-XW5000) | 1.101 | Previously reported working; optional capabilities vary |
 
 Commands, accepted values and available controls vary by model, input and power
@@ -158,6 +161,9 @@ Power and other values use different update paths:
 - **Input, signal and custom sensors:** configurable refresh while fully on,
   paused during fast power monitoring. **Include picture settings** adds enabled,
   supported picture controls to that schedule.
+- **Picture-control recovery:** keep known entities present but unavailable while
+  off or unreadable. After power-on, read fresh values and retry temporary startup
+  inactivity on the configured cadence during the first minute.
 - **Firmware and diagnostics:** firmware/errors/warnings are setup snapshots,
   not continuous monitoring. Hour counters refresh at setup and after confirmed
   shutdown, with retries when appropriate.

@@ -1,8 +1,10 @@
 # How values update
 
-This reference describes stable **v2.4.0**, including the v2.3.0 behavior plus
-[custom ADCP sensors](custom-sensors.md). Older v2.3.0 does not
+This reference describes stable **v2.4.1**, including resilient picture-control
+updates, startup recovery and [custom ADCP sensors](custom-sensors.md).
+Older v2.3.0 does not
 include custom sensors or the [Send/Query ADCP command actions](custom-commands.md).
+See [upgrading and recovery checks](#upgrading-to-241) when updating from 2.4.0.
 
 The [Query ADCP command](custom-commands.md#query-current-values) returns a
 fresh value, range or metadata to its caller. It never changes entity state or
@@ -40,7 +42,7 @@ under the parent projector's ownership, rather than creating subentries.
 | Option | Default / choices | Exactly what it controls |
 | --- | --- | --- |
 | Refresh interval (`operational_refresh_interval`) | 10 seconds; Disabled (`0`), 5, 10, or 30 seconds | The dedicated loop for input, signal, enabled custom sensors, and optionally the eight picture controls listed below. Runs only while the projector is available and fully `on`. Pauses during fast power-transition monitoring. |
-| Include picture settings (`refresh_picture_settings`) | On, including existing installations | Adds supported, enabled picture controls to that same loop. Off leaves input, signal and custom sensors in the loop. Has no effect if the interval is Disabled. |
+| Include picture settings (`refresh_picture_settings`) | On, including existing installations | Adds supported, enabled picture controls to that same loop. Off leaves input, signal and custom sensors in the loop, plus pending initial picture reads until each succeeds. Does not start a loop if the interval is Disabled. |
 
 Changes apply without reloading. These options do **not** change the SDAP
 advertisement interval, the independent power watchdog, fast power-monitoring
@@ -72,12 +74,15 @@ For the table:
   to the power/availability conditions above. It reads input/signal first, then
   eligible picture controls if Include picture settings is on, then enabled custom sensors.
 - **Initial control read** means a query when an enabled control entity is added
-  to Home Assistant, including after integration setup/reload. It is attempted
-  even if the projector is not on, but the projector may reject it then.
+  while fully on, or after the next confirmed startup. It does not query picture
+  values while off or during transitions. This one-time read is independent of
+  the periodic refresh options. Pending failures retry on eligible core refreshes
+  and on the configured loop even with Include picture settings off; successfully
+  read controls then leave the initial-read queue.
 - **Own-command readback** means a query immediately after Home Assistant
   successfully sends a change to that same control. It is independent of both
-  refresh options; a failed read retains the previous value rather than
-  assuming the requested change succeeded.
+  refresh options; a failed picture read makes that control unavailable rather
+  than showing its previous reading as current or assuming the write succeeded.
 
 | Entity / displayed value | ADCP read | How and when the value updates |
 | --- | --- | --- |
@@ -128,7 +133,7 @@ Power has its own update paths, independent of the configurable value interval:
 | --- | --- |
 | Setup/reload | Reads `power_status ?` before optional status values. |
 | SDAP push | Applies a recognized power announcement when it arrives. The projector controls its advertisement interval, normally 30 seconds; this is not instantaneous push on every state change. A changed power/address announcement also schedules a core ADCP refresh. |
-| Independent watchdog | Waits 60 seconds between core refresh attempts, regardless of the last believed power state. Corrects missed/stale announcements. Skips reads while fast monitoring is active. Also reads input/signal if on, but not picture settings, errors, warnings, or hours. |
+| Independent watchdog | Waits 60 seconds between core refresh attempts, regardless of the last believed power state. Corrects missed/stale announcements. Skips reads while fast monitoring is active. Reads input/signal if on, and can retry pending initial picture reads and capability discovery; not recurring picture refresh, errors, warnings, or hours. |
 | Home Assistant turn-on | After acknowledgement, queries `power_status ?` immediately, then waits one second after each reply before the next query. Stops at confirmed `on`, or after at most 60 seconds. |
 | Home Assistant turn-off | Same fast checks, stopping at confirmed `standby` or `saving_standby`, or after at most 300 seconds (5 minutes). Cooling is not treated as completed shutdown. |
 
@@ -293,16 +298,34 @@ Enabled custom sensors follow, with their own two-second total budget and
 60-second query-failure backoff. Duplicate commands reuse one response per cycle.
 See [custom-sensor timing and failure rules](custom-sensors.md#exactly-when-readings-update).
 
-A failed picture read keeps its last known value and backs that command off for
-at least **60 seconds**. Other controls can still be read within the remaining
-budget. A budget timeout ends the picture phase and backs off the command that
-was in progress. Stale in-flight picture results are discarded after relevant
-power/option changes. Periodic picture updates are published when values change.
+A failed picture read clears its live value (the entity becomes unavailable).
+Normally it backs off for at least **60 seconds**. Since **2.4.1**, during the
+first **60 seconds after confirmed `on`**, a Sony `err_inactive` reply instead
+makes that setting eligible again after the configured **5/10/30-second interval**.
+This handles menu settings that are not ready immediately when power becomes
+`on`. There is no intentional one-minute wait for the first read, and no new
+one-second picture polling loop. An unchanged `on` announcement does not restart
+the recovery window. Inactivity that persists beyond the window, unsupported
+commands, connection failures and timeouts retain the normal 60-second backoff.
+
+If Include picture settings is off, only pending initial reads use the configured
+loop; each control stops being queried once that initial read succeeds. If the
+refresh interval is Disabled, no faster retry loop is started and the normal
+60-second backoff/eligible core refreshes apply. Custom-sensor retry rules are
+unchanged. Retry eligibility is not a guarantee of exact timing: query duration,
+locks, batch budgets and subsequent refresh opportunities still apply.
+
+Other controls can still be read within the remaining budget. A budget timeout
+ends the picture phase and backs off the command that was in progress. Stale
+in-flight picture results are discarded after relevant power/option changes.
+Periodic picture updates are published when values change. Debug logging reports
+failed built-in picture queries and their retry delay, not successful setting
+values, to help distinguish startup inactivity from transport/budget failures.
 
 Input/signal read failures also keep their previous values. When power leaves
-`on`, however, input and signal are explicitly cleared. Picture controls retain
-their last read values in standby/startup/cooling; those are **not** proof of the
-current menu settings. Changing Picture mode through Home Assistant immediately
+`on`, however, input, signal and picture readings are explicitly cleared. Known
+picture-control entities remain present but unavailable in standby/startup/cooling
+and until a fresh read succeeds after startup. Changing Picture mode through Home Assistant immediately
 reads back Picture mode only: dependent numeric settings catch up on later
 configured picture refreshes, if enabled.
 
@@ -311,8 +334,9 @@ unavailable. Power/connection failures can do so, and rejected credentials start
 reauthentication. After an SDAP announcement, a 95-second silence timer can also
 mark the device unavailable; successful ADCP reads can restore availability.
 Cached data and availability are distinct: a cached value is not proof it was
-recently read. All entities share the manager's availability, with additional
-support checks for Picture mode/Video mute.
+recently read. All entities share the manager's availability. Picture controls
+additionally require confirmed `on`, no commanded power transition, and a current
+successful reading, with support checks for Picture mode/Video mute.
 
 ## Errors and warnings: snapshot only
 
@@ -368,16 +392,56 @@ These values are metadata, not additional periodically refreshed sensors.
 | Numeric ranges | Command-info probes for `brightness`, `contrast`, `sharpness`, `light_output_val`, `real_cre_reso`, and `real_cre_noise`. Determines which number entities can be created. |
 | Video-mute support | Command-info probe for `blank`, or a successful value read. |
 
-Capability discovery uses command-info queries, with Sony's alternate syntax as
-a fallback. It is attempted at setup if power is not unknown or standby; when
-deferred, it can run after an active-state SDAP refresh or successful monitored
-turn-on. It is not repeated on every configured refresh. Reload to reprobe
-capabilities. Reconnecting the TCP client alone does not reread stable identity
-or firmware.
+Since 2.4.1, capability discovery uses command-info queries **only while fully on**,
+with alternate syntax attempted only after explicit command/option rejection.
+Setup, changed-power SDAP refreshes, completed turn-on monitoring, and the existing
+60-second core watchdog can trigger eligible probes. A pass is bounded to 15 seconds;
+temporary failures remain pending and retry no more than once per 60 seconds while
+on (a new power-state change resets that backoff). Completed commands are not
+repeated in each retry, and a timed-out command rotates behind the other pending
+commands. No additional polling task is introduced.
+
+Successful metadata is stored in the projector's HA config entry, separate from
+live values. Reload/restart can recreate known number entities while in standby,
+without querying unsupported/offline picture settings or inventing numeric ranges.
+Metadata is rechecked when fully on; temporary failures do not erase known support.
+Conflicting known model/serial/MAC identity or invalid cached metadata is not reused.
+Entity IDs are unchanged. Reconnecting alone does not reread identity/firmware.
 
 Downloading integration diagnostics exports the current cached identity, power,
 input, signal, errors, warnings, hours, availability, and capability information.
 It does **not** query the projector or make stale values fresh.
+
+## Upgrading to 2.4.1
+
+Update to **v2.4.1** through HACS and restart Home Assistant. Prereleases are not
+required; beta users can select v2.4.1 through **Redownload** if necessary.
+Do not delete or re-add the integration or its existing entities.
+
+1. Turn the projector on and wait for confirmed `on`. Check Brightness, Contrast,
+   Sharpness and other supported controls. This first on-session populates the
+   new capability cache when upgrading from 2.4.0 or older; an off-only upgrade
+   cannot recreate numeric ranges that have never been cached. Existing 2.4.1
+   beta users keep their cache.
+2. Turn it off and wait for standby. Picture controls should remain listed but
+   unavailable, not display old values as current.
+3. Reload the integration **while off**, then restart HA while off. The same
+   controls should still exist without the "no longer being provided" banner.
+   Existing entity IDs, names and history must remain unchanged.
+4. Turn it on again. Controls should regain fresh values without another reload.
+   With a 10-second interval, compare confirmed `on` with the time picture values
+   return. If startup queries return `err_inactive`, 2.4.1 retries them on the
+   configured cadence during the first minute, rather than imposing a minute-long
+   backoff. Actual projector readiness still matters. If the minute-long delay
+   persists, enable integration debug logging before another startup and inspect
+   the failed-query reason and retry delay; do not assume all failures are inactivity.
+   Repeat once with periodic refresh Disabled and Include picture settings off:
+   the initial on-read should still happen, but no recurring picture loop starts.
+5. If you use custom sensors, add/edit one while off and repeat step 4. Check that
+   power, input/signal, Query/Send actions and existing automations still work.
+
+Known unsupported controls are not invented. If a formerly supported value cannot
+currently be read, its entity stays unavailable; a successful later read restores it.
 
 ## Examples and automation guidance
 
